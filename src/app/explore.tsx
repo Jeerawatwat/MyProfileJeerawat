@@ -1,180 +1,439 @@
+import React, { useState } from 'react';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Pressable, View, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ExternalLink } from '@/components/external-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+// เปลี่ยนตัวเลือกหมวดหมู่สินค้าด้านบนให้เข้ากับสินค้า IT
+const CATEGORIES = ['All', 'Laptops', 'Audio', 'Keyboards'];
+
+// เปลี่ยนข้อมูลเป็นสินค้าไอที 3 อย่าง พร้อมลิงก์รูปภาพที่แสดงผลตรงปกแน่นอนบน Web
+const PRODUCTS = [
+  {
+    id: '1',
+    brand: 'APPLE',
+    name: 'MacBook Air M2',
+    price: '฿34,900',
+    originalPrice: '฿39,900',
+    discount: '-12%',
+    rating: '5',
+    image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=400&auto=format&fit=crop&q=80',
+  },
+  {
+    id: '2',
+    brand: 'SONY',
+    name: 'WH-1000XM5 ANC',
+    price: '฿11,900',
+    originalPrice: '฿14,900',
+    discount: '-20%',
+    rating: '5',
+    image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&auto=format&fit=crop&q=80',
+  },
+  {
+    id: '3',
+    brand: 'LOGITECH',
+    name: 'MX Mechanical Mini',
+    price: '฿4,690',
+    originalPrice: '฿5,290',
+    discount: '-11%',
+    rating: '5',
+    image: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=400&auto=format&fit=crop&q=80',
+  },
+];
+
 export default function TabTwoScreen() {
   const safeAreaInsets = useSafeAreaInsets();
+  const [activeCategory, setActiveCategory] = useState('All');
+  const theme = useTheme();
+
   const insets = {
     ...safeAreaInsets,
     bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
   };
-  const theme = useTheme();
-
-  const contentPlatformStyle = Platform.select({
-    android: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-      paddingBottom: insets.bottom,
-    },
-    web: {
-      paddingTop: Spacing.six,
-      paddingBottom: Spacing.four,
-    },
-  });
 
   return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
-      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="subtitle">Explore</ThemedText>
-          <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
-          </ThemedText>
+    <ThemedView style={[styles.mainContainer, { backgroundColor: '#f8f9fa' }]}>
 
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.linkButton}>
-                <ThemedText type="link">Expo documentation</ThemedText>
-                <SymbolView
-                  tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
-                  size={12}
-                />
-              </ThemedView>
+      {/* ==================== 1. TOP MENU ==================== */}
+      <View style={[styles.topHeaderContainer, { paddingTop: Platform.OS === 'web' ? Spacing.four : safeAreaInsets.top + 10 }]}>
+
+        <View style={styles.topRow}>
+          <View>
+            <ThemedText style={styles.brandTitle}>PAPENGIE GROUP</ThemedText>
+            <ThemedText style={styles.adminSubtitle}>hello: admin (💻 Admin)</ThemedText>
+          </View>
+
+          <View style={styles.topRowRight}>
+            <Pressable style={styles.dashboardButton}>
+              <ThemedText style={styles.dashboardText}>VIEW THE DASHBOARD. 📊</ThemedText>
             </Pressable>
-          </ExternalLink>
-        </ThemedView>
+            <View style={styles.cartIconContainer}>
+              <SymbolView tintColor="#333" name={{ ios: 'cart', android: 'shopping-cart', web: 'shopping_cart' }} size={24} />
+              <View style={styles.cartBadge}><ThemedText style={styles.badgeText}>3</ThemedText></View>
+            </View>
+          </View>
+        </View>
 
-        <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
-            <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
-            </ThemedText>
-            <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/router/introduction">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+        <View style={styles.searchBarContainer}>
+          <SymbolView tintColor="#888" name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }} size={18} style={styles.searchIcon} />
+          <TextInput
+            placeholder="Find laptops, headphones, keyboards..."
+            placeholderTextColor="#888"
+            style={styles.searchInput}
+          />
+        </View>
 
-          <Collapsible title="Android, iOS, and web support">
-            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
-              <ThemedText type="small">
-                You can open this project on Android, iOS, and the web. To open the web version,
-                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
-                project.
-              </ThemedText>
-              <Image
-                source={require('@/assets/images/tutorial-web.png')}
-                style={styles.imageTutorial}
-              />
-            </ThemedView>
-          </Collapsible>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesScroll}>
+          {CATEGORIES.map((cat) => {
+            const isActive = activeCategory === cat;
+            return (
+              <Pressable
+                key={cat}
+                onPress={() => setActiveCategory(cat)}
+                style={[styles.categoryTab, isActive ? styles.categoryActiveTab : styles.categoryInactiveTab]}
+              >
+                <ThemedText style={[styles.categoryTabText, isActive ? styles.categoryActiveText : styles.categoryInactiveText]}>
+                  {cat}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-          <Collapsible title="Images">
-            <ThemedText type="small">
-              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
-              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
-              screen densities.
-            </ThemedText>
-            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
-            <ExternalLink href="https://reactnative.dev/docs/images">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+      {/* ==================== ส่วนเนื้อหา: สินค้าไอที 3 ชิ้น ==================== */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.contentContainer, { paddingBottom: insets.bottom + 120 }]}>
 
-          <Collapsible title="Light and dark mode components">
-            <ThemedText type="small">
-              This template has light and dark mode support. The{' '}
-              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
-              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+        <View style={styles.productGrid}>
+          {PRODUCTS.map((product) => (
+            <View key={product.id} style={styles.productCard}>
+              <View style={styles.cardHeaderActions}>
+                <Pressable style={styles.actionCircleButton}><ThemedText style={{color: 'white', fontSize: 10}}>🗑️</ThemedText></Pressable>
+                <Pressable style={[styles.actionCircleButton, {backgroundColor: 'white'}]}><ThemedText style={{fontSize: 10}}>❤️</ThemedText></Pressable>
+              </View>
 
-          <Collapsible title="Animations">
-            <ThemedText type="small">
-              This template includes an example of an animated component. The{' '}
-              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
-              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
-              animate opening this hint.
-            </ThemedText>
-          </Collapsible>
-        </ThemedView>
-        {Platform.OS === 'web' && <WebBadge />}
-      </ThemedView>
-    </ScrollView>
+              {/* รูปภาพสินค้าใช้ความกว้างเต็มการ์ดและคลุมสัดส่วนให้ดีไซน์เสถียร */}
+              <View style={styles.imageContainer}>
+                <Image source={{ uri: product.image }} style={styles.productImage} priority="high" />
+              </View>
+
+              <View style={styles.discountBadge}><ThemedText style={styles.discountText}>{product.discount}</ThemedText></View>
+
+              <View style={styles.productInfo}>
+                <ThemedText style={styles.productBrand}>{product.brand}</ThemedText>
+                <ThemedText numberOfLines={1} style={styles.productName}>{product.name}</ThemedText>
+                <ThemedText style={styles.ratingText}>⭐ {product.rating}</ThemedText>
+
+                <View style={styles.priceRow}>
+                  <ThemedText style={styles.currentPrice}>{product.price}</ThemedText>
+                  <ThemedText style={styles.originalPrice}>{product.originalPrice}</ThemedText>
+                </View>
+
+                <Pressable style={styles.addToCartButton}>
+                  <ThemedText style={styles.addToCartText}>+ Add to cart</ThemedText>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* ==================== 2. BOTTOM MENU ==================== */}
+      <View style={[styles.bottomNavigationBar, { paddingBottom: safeAreaInsets.bottom + 8 }]}>
+        <View style={styles.navItem}>
+          <SymbolView tintColor="#777" name={{ ios: 'house', android: 'home', web: 'home' }} size={22} />
+          <ThemedText style={styles.navText}>Home</ThemedText>
+        </View>
+        <View style={styles.navItem}>
+          <SymbolView tintColor="#777" name={{ ios: 'cart', android: 'shopping-cart', web: 'shopping_cart' }} size={22} />
+          <ThemedText style={styles.navText}>Cart</ThemedText>
+        </View>
+        <View style={styles.navItem}>
+          <SymbolView tintColor="#777" name={{ ios: 'plus.circle', android: 'add-circle', web: 'add_circle' }} size={22} />
+          <ThemedText style={styles.navText}>Add</ThemedText>
+        </View>
+        <View style={styles.navItem}>
+          <SymbolView tintColor="#777" name={{ ios: 'heart', android: 'favorite', web: 'favorite' }} size={22} />
+          <ThemedText style={styles.navText}>Favorites</ThemedText>
+        </View>
+        <View style={styles.navItem}>
+          <SymbolView tintColor="#777" name={{ ios: 'person', android: 'person', web: 'person' }} size={22} />
+          <ThemedText style={styles.navText}>Account</ThemedText>
+        </View>
+        <View style={styles.navItem}>
+          <SymbolView tintColor="#777" name={{ ios: 'tag', android: 'label', web: 'label' }} size={22} />
+          <ThemedText style={styles.navText}>Brand</ThemedText>
+        </View>
+        <View style={styles.navItem}>
+          <SymbolView tintColor="#0099ff" name={{ ios: 'square.grid.2x2.fill', android: 'apps', web: 'apps' }} size={22} />
+          <ThemedText style={[styles.navText, { color: '#0099ff' }]}>Admin</ThemedText>
+        </View>
+      </View>
+
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
+  mainContainer: {
+    flex: 1,
+  },
+  topHeaderContainer: {
+    backgroundColor: 'white',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 4,
+    zIndex: 99,
+  },
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  brandTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111',
+  },
+  adminSubtitle: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  topRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dashboardButton: {
+    backgroundColor: '#7f56da',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  dashboardText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  cartIconContainer: {
+    position: 'relative',
+    padding: 4,
+  },
+  cartBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#0099ff',
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#f1f3f5',
+    borderRadius: 25,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    height: 44,
+    marginBottom: 12,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
+  categoriesScroll: {
+    gap: 8,
+    paddingVertical: 4,
+  },
+  categoryTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  categoryActiveTab: {
+    backgroundColor: '#0099ff',
+    borderColor: '#0099ff',
+  },
+  categoryInactiveTab: {
+    backgroundColor: 'white',
+    borderColor: '#e9ecef',
+  },
+  categoryTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  categoryActiveText: {
+    color: 'white',
+  },
+  categoryInactiveText: {
+    color: '#495057',
+  },
   scrollView: {
     flex: 1,
   },
   contentContainer: {
+    padding: 16,
+  },
+  productGrid: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
   },
-  container: {
-    maxWidth: MaxContentWidth,
-    flexGrow: 1,
+  productCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '48%',
+    padding: 12,
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    elevation: 1,
+    marginBottom: 4,
   },
-  titleContainer: {
-    gap: Spacing.three,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
-  },
-  centerText: {
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  linkButton: {
+  cardHeaderActions: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    right: 8,
     flexDirection: 'row',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
+    justifyContent: 'space-between',
+    zIndex: 5,
+  },
+  actionCircleButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#e74c3c',
     justifyContent: 'center',
-    gap: Spacing.one,
     alignItems: 'center',
   },
-  sectionsWrapper: {
-    gap: Spacing.five,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-  },
-  collapsibleContent: {
-    alignItems: 'center',
-  },
-  imageTutorial: {
+  imageContainer: {
     width: '100%',
-    aspectRatio: 296 / 171,
-    borderRadius: Spacing.three,
-    marginTop: Spacing.two,
+    height: 120,
+    marginTop: 15,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
-  imageReact: {
-    width: 100,
-    height: 100,
-    alignSelf: 'center',
+  productImage: {
+    width: '100%',
+    height: '100%',
+  },
+  discountBadge: {
+    position: 'absolute',
+    top: 125,
+    left: 12,
+    backgroundColor: '#fce4e4',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    zIndex: 4,
+  },
+  discountText: {
+    color: '#e74c3c',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  productInfo: {
+    marginTop: 22,
+  },
+  productBrand: {
+    fontSize: 11,
+    color: '#999',
+    fontWeight: 'bold',
+  },
+  productName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#333',
+    marginTop: 2,
+  },
+  ratingText: {
+    fontSize: 11,
+    color: '#f1c40f',
+    marginVertical: 4,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  currentPrice: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0099ff',
+  },
+  originalPrice: {
+    fontSize: 10,
+    color: '#bbb',
+    textDecorationLine: 'line-through',
+  },
+  addToCartButton: {
+    backgroundColor: '#0099ff',
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  addToCartText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  bottomNavigationBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'white',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f3f5',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    zIndex: 100,
+  },
+  navItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navText: {
+    fontSize: 10,
+    color: '#777',
+    marginTop: 4,
+    fontWeight: '500',
   },
 });

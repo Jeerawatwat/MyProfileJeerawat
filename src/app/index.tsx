@@ -1,3 +1,4 @@
+// โค้ดเดิมของ src/app/index.tsx ที่ถูกต้อง
 import * as Device from 'expo-device';
 import { Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -35,7 +36,7 @@ export default function HomeScreen() {
         <ThemedView style={styles.heroSection}>
           <AnimatedIcon />
           <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
+            Welcome to&nbsp;Jeerawat
           </ThemedText>
         </ThemedView>
 
