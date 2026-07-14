@@ -1,55 +1,54 @@
-import React, { useState } from 'react';
-import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { Platform, ScrollView, StyleSheet, Pressable, View, TextInput } from 'react-native';
+import { useEffect, useState } from 'react'; // แก้ไข: นำเข้า useEffect และ useState จาก react ให้ถูกต้อง
+import { Image, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
-// เปลี่ยนตัวเลือกหมวดหมู่สินค้าด้านบนให้เข้ากับสินค้า IT
+// ตัวเลือกหมวดหมู่สินค้าด้านบน
 const CATEGORIES = ['All', 'Laptops', 'Audio', 'Keyboards'];
 
-// เปลี่ยนข้อมูลเป็นสินค้าไอที 3 อย่าง พร้อมลิงก์รูปภาพที่แสดงผลตรงปกแน่นอนบน Web
-const PRODUCTS = [
-  {
-    id: '1',
-    brand: 'APPLE',
-    name: 'MacBook Air M2',
-    price: '฿34,900',
-    originalPrice: '฿39,900',
-    discount: '-12%',
-    rating: '5',
-    image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=400&auto=format&fit=crop&q=80',
-  },
-  {
-    id: '2',
-    brand: 'SONY',
-    name: 'WH-1000XM5 ANC',
-    price: '฿11,900',
-    originalPrice: '฿14,900',
-    discount: '-20%',
-    rating: '5',
-    image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&auto=format&fit=crop&q=80',
-  },
-  {
-    id: '3',
-    brand: 'LOGITECH',
-    name: 'MX Mechanical Mini',
-    price: '฿4,690',
-    originalPrice: '฿5,290',
-    discount: '-11%',
-    rating: '5',
-    image: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=400&auto=format&fit=crop&q=80',
-  },
-];
+// โครงสร้าง Interface ของ Product
+type Product = {
+  id: string;
+  brand: string;
+  name: string;
+  price: string;
+  originalPrice: string;
+  discount: string;
+  rating: string;
+  image: string;
+};
 
 export default function TabTwoScreen() {
   const safeAreaInsets = useSafeAreaInsets();
   const [activeCategory, setActiveCategory] = useState('All');
+  const [products, setProducts] = useState<Product[]>([]);
   const theme = useTheme();
+
+  // ดึงข้อมูล JSON จาก GitHub
+  useEffect(() => {
+    fetch('https://raw.githubusercontent.com/Jeerawatwat/MyProfileJeerawat/refs/heads/master/products.json')
+      .then((response) => response.json())
+      .then((data) => {
+        setProducts(data);
+      })
+      .catch((error) => {
+        console.error('Error fetching products:', error);
+      });
+  }, []);
+
+  // ระบบกรองข้อมูลสินค้าตามแบรนด์เพื่อให้เชื่อมโยงกับปุ่มหมวดหมู่ด้านบน
+  const filteredProducts = products.filter((product) => {
+    if (activeCategory === 'All') return true;
+    if (activeCategory === 'Laptops') return product.brand.toLowerCase() === 'apple';
+    if (activeCategory === 'Audio') return product.brand.toLowerCase() === 'sony';
+    if (activeCategory === 'Keyboards') return product.brand.toLowerCase() === 'logitech';
+    return true;
+  });
 
   const insets = {
     ...safeAreaInsets,
@@ -106,22 +105,26 @@ export default function TabTwoScreen() {
         </ScrollView>
       </View>
 
-      {/* ==================== ส่วนเนื้อหา: สินค้าไอที 3 ชิ้น ==================== */}
+      {/* ==================== ส่วนเนื้อหา: ดึงจาก API JSON ==================== */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.contentContainer, { paddingBottom: insets.bottom + 120 }]}>
 
         <View style={styles.productGrid}>
-          {PRODUCTS.map((product) => (
+          {filteredProducts.map((product) => (
             <View key={product.id} style={styles.productCard}>
               <View style={styles.cardHeaderActions}>
                 <Pressable style={styles.actionCircleButton}><ThemedText style={{color: 'white', fontSize: 10}}>🗑️</ThemedText></Pressable>
                 <Pressable style={[styles.actionCircleButton, {backgroundColor: 'white'}]}><ThemedText style={{fontSize: 10}}>❤️</ThemedText></Pressable>
               </View>
 
-              {/* รูปภาพสินค้าใช้ความกว้างเต็มการ์ดและคลุมสัดส่วนให้ดีไซน์เสถียร */}
+              {/* รูปภาพสินค้า */}
               <View style={styles.imageContainer}>
-                <Image source={{ uri: product.image }} style={styles.productImage} priority="high" />
+                <Image 
+                  source={{ uri: product.image }} 
+                  style={styles.productImage} 
+                  resizeMode="cover"
+                />
               </View>
 
               <View style={styles.discountBadge}><ThemedText style={styles.discountText}>{product.discount}</ThemedText></View>
