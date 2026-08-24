@@ -1,9 +1,15 @@
+<<<<<<< HEAD
 // src/app/index.tsx — Dashboard
 // Every number here is a live aggregate from GET /api/dashboard (real MySQL
 // query), never a placeholder.
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+=======
+import * as Device from 'expo-device';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Platform, StyleSheet, View } from 'react-native';
+>>>>>>> bd44bbed68bd75eeb6040c36cf1ed18819af8790
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
@@ -15,6 +21,7 @@ import { ApiError, dashboardApi, formatBaht, resolveImageUrl, type DashboardStat
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+<<<<<<< HEAD
 const STAT_TILES: Array<{
   key: keyof Pick<DashboardStats, 'totalProducts' | 'totalCategories' | 'lowStock' | 'outOfStock'>;
   label: string;
@@ -59,6 +66,53 @@ export default function DashboardScreen() {
     setIsRefreshing(false);
   };
 
+=======
+interface InventoryItem {
+  id: number;
+  name: string;
+  price: string | number;
+  stock: number;
+  category: string;
+}
+
+function getDevMenuHint() {
+  if (Platform.OS === 'web') {
+    return <ThemedText type="small">use browser devtools</ThemedText>;
+  }
+  if (Device.isDevice) {
+    return (
+      <ThemedText type="small">
+        shake device or press <ThemedText type="code">m</ThemedText> in terminal
+      </ThemedText>
+    );
+  }
+  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+  return (
+    <ThemedText type="small">
+      press <ThemedText type="code">{shortcut}</ThemedText>
+    </ThemedText>
+  );
+}
+
+export default function HomeScreen() {
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // ดึงข้อมูล API จาก Backend Server
+  useEffect(() => {
+    fetch('http://119.59.102.161:3079/api/inventory')
+      .then((res) => res.json())
+      .then((data) => {
+        setItems(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Fetch Error:', err);
+        setLoading(false);
+      });
+  }, []);
+
+>>>>>>> bd44bbed68bd75eeb6040c36cf1ed18819af8790
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -101,6 +155,7 @@ export default function DashboardScreen() {
                   ))}
                 </View>
 
+<<<<<<< HEAD
                 <ThemedView type="cardBackground" style={styles.recentContainer}>
                   <ThemedText type="defaultSemiBold" style={styles.recentTitle}>
                     Recent Products
@@ -139,6 +194,44 @@ export default function DashboardScreen() {
             )
           )}
         </ScrollView>
+=======
+        {/* ส่วนแสดงข้อมูล Inventory ที่เชื่อมกับ API */}
+        <ThemedView type="backgroundElement" style={styles.inventoryContainer}>
+          <ThemedText type="subtitle" style={styles.inventoryTitle}>
+            Inventory Items
+          </ThemedText>
+          {loading ? (
+            <ActivityIndicator size="small" />
+          ) : (
+            <FlatList
+              data={items}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={({ item }) => (
+                <View style={styles.itemCard}>
+                  <ThemedText type="defaultSemiBold">{item.name}</ThemedText>
+                  <ThemedText type="small">หมวดหมู่: {item.category}</ThemedText>
+                  <ThemedText type="small">ราคา: {item.price} บาท | คงเหลือ: {item.stock} ชิ้น</ThemedText>
+                </View>
+              )}
+              style={{ maxHeight: 200 }}
+            />
+          )}
+        </ThemedView>
+
+        <ThemedView type="backgroundElement" style={styles.stepContainer}>
+          <HintRow
+            title="Try editing"
+            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
+          />
+          <HintRow title="Dev tools" hint={getDevMenuHint()} />
+          <HintRow
+            title="Fresh start"
+            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
+          />
+        </ThemedView>
+
+        {Platform.OS === 'web' && <WebBadge />}
+>>>>>>> bd44bbed68bd75eeb6040c36cf1ed18819af8790
       </SafeAreaView>
     </ThemedView>
   );
@@ -152,12 +245,20 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
+<<<<<<< HEAD
   scrollContent: {
     width: '100%',
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.three,
     paddingTop: Spacing.three,
     paddingBottom: BottomTabInset + Spacing.six,
+=======
+  heroSection: {
+    alignItems: 'center',
+    justify: 'center',
+    flex: 1,
+    paddingHorizontal: Spacing.four,
+>>>>>>> bd44bbed68bd75eeb6040c36cf1ed18819af8790
     gap: Spacing.four,
   },
   header: {
@@ -172,6 +273,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D33A3F55',
   },
+<<<<<<< HEAD
   statGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -228,3 +330,21 @@ const styles = StyleSheet.create({
     gap: 2,
   },
 });
+=======
+  inventoryContainer: {
+    gap: Spacing.two,
+    alignSelf: 'stretch',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.four,
+  },
+  inventoryTitle: {
+    marginBottom: Spacing.one,
+  },
+  itemCard: {
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#ccc',
+  },
+});
+>>>>>>> bd44bbed68bd75eeb6040c36cf1ed18819af8790

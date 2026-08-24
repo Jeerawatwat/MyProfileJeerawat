@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // server.js — Express API entrypoint.
 // Kept at the project root (same place the original server.js lived) so the
 // existing `npm start` / `node server.js` workflow keeps working.
@@ -16,10 +17,17 @@ const productsRoutes = require('./backend/routes/products.routes');
 const categoriesRoutes = require('./backend/routes/categories.routes');
 const dashboardRoutes = require('./backend/routes/dashboard.routes');
 const uploadsRoutes = require('./backend/routes/uploads.routes');
+=======
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const mysql = require('mysql2/promise');
+>>>>>>> bd44bbed68bd75eeb6040c36cf1ed18819af8790
 
 const app = express();
 const port = process.env.PORT || 3079;
 
+<<<<<<< HEAD
 // Where uploaded product photos land — created on boot if it doesn't exist yet.
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) {
@@ -66,3 +74,52 @@ testConnection();
 app.listen(port, '0.0.0.0', () => {
   console.log(`Server is running on port ${port}`);
 });
+=======
+app.use(cors());
+app.use(express.json({ limit: '5mb' }));
+
+// สร้าง การเชื่อมต่อกับ MySQL Database
+const pool = mysql.createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT || 3306,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    timezone: "+07:00"
+});
+
+// ตรวจสอบการเชื่อมต่อ Database
+(async function testMySQL() {
+    try {
+        const conn = await pool.getConnection();
+        console.log('Connected to MySQL Database:', process.env.DB_NAME);
+        conn.release();
+    } catch(err) {
+        console.error('MySQL Connection Failed:', err.message);
+    }
+})();
+
+// API ดึงข้อมูลตาราง Inventory
+app.get('/api/inventory', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM Inventory');
+        res.json(rows);
+    } catch (error) {
+        console.error('Fetch Inventory Error:', error.message);
+        res.status(500).json({ error: 'Failed to fetch inventory' });
+    }
+});
+
+// Route เช็คสถานะ API
+app.get('/api', (req, res) => {
+    res.send("API is running");
+});
+
+// เริ่มทำงาน Server
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Server is running on port ${port}`);
+});
+>>>>>>> bd44bbed68bd75eeb6040c36cf1ed18819af8790
