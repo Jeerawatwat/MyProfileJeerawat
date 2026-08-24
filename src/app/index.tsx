@@ -1,6 +1,6 @@
-// โค้ดเดิมของ src/app/index.tsx ที่ถูกต้อง
 import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedIcon } from '@/components/animated-icon';
@@ -9,6 +9,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+
+interface InventoryItem {
+  id: number;
+  name: string;
+  price: string | number;
+  stock: number;
+  category: string;
+}
 
 function getDevMenuHint() {
   if (Platform.OS === 'web') {
@@ -30,6 +38,23 @@ function getDevMenuHint() {
 }
 
 export default function HomeScreen() {
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // ดึงข้อมูล API จาก Backend Server
+  useEffect(() => {
+    fetch('http://119.59.102.161:3079/api/inventory')
+      .then((res) => res.json())
+      .then((data) => {
+        setItems(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Fetch Error:', err);
+        setLoading(false);
+      });
+  }, []);
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -43,6 +68,29 @@ export default function HomeScreen() {
         <ThemedText type="code" style={styles.code}>
           get started
         </ThemedText>
+
+        {/* ส่วนแสดงข้อมูล Inventory ที่เชื่อมกับ API */}
+        <ThemedView type="backgroundElement" style={styles.inventoryContainer}>
+          <ThemedText type="subtitle" style={styles.inventoryTitle}>
+            Inventory Items
+          </ThemedText>
+          {loading ? (
+            <ActivityIndicator size="small" />
+          ) : (
+            <FlatList
+              data={items}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={({ item }) => (
+                <View style={styles.itemCard}>
+                  <ThemedText type="defaultSemiBold">{item.name}</ThemedText>
+                  <ThemedText type="small">หมวดหมู่: {item.category}</ThemedText>
+                  <ThemedText type="small">ราคา: {item.price} บาท | คงเหลือ: {item.stock} ชิ้น</ThemedText>
+                </View>
+              )}
+              style={{ maxHeight: 200 }}
+            />
+          )}
+        </ThemedView>
 
         <ThemedView type="backgroundElement" style={styles.stepContainer}>
           <HintRow
@@ -78,7 +126,7 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     alignItems: 'center',
-    justifyContent: 'center',
+    justify: 'center',
     flex: 1,
     paddingHorizontal: Spacing.four,
     gap: Spacing.four,
@@ -95,5 +143,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.four,
     borderRadius: Spacing.four,
+  },
+  inventoryContainer: {
+    gap: Spacing.two,
+    alignSelf: 'stretch',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.four,
+  },
+  inventoryTitle: {
+    marginBottom: Spacing.one,
+  },
+  itemCard: {
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#ccc',
   },
 });
