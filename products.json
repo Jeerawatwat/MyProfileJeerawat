@@ -1,0 +1,32 @@
+[
+  {
+    "id": "1",
+    "brand": "APPLE",
+    "name": "MacBook Air M2",
+    "price": "฿34,900",
+    "originalPrice": "฿39,900",
+    "discount": "-12%",
+    "rating": "5",
+    "image": "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=400&auto=format&fit=crop&q=80"
+  },
+  {
+    "id": "2",
+    "brand": "SONY",
+    "name": "WH-1000XM5 ANC",
+    "price": "฿11,900",
+    "originalPrice": "฿14,900",
+    "discount": "-20%",
+    "rating": "5",
+    "image": "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&auto=format&fit=crop&q=80"
+  },
+  {
+    "id": "3",
+    "brand": "LOGITECH",
+    "name": "MX Mechanical Mini",
+    "price": "฿4,690",
+    "originalPrice": "฿5,290",
+    "discount": "-11%",
+    "rating": "5",
+    "image": "https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=400&auto=format&fit=crop&q=80"
+  }
+]
