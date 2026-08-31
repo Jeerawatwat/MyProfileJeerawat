@@ -1,6 +1,9 @@
 // backend/routes/dashboard.routes.js
 // All dashboard numbers are live aggregates over the real Inventory table —
-// nothing here is a placeholder or mock figure.
+// nothing here is a placeholder or mock figure. Every query is scoped to
+// is_active = 1 — a soft-deleted product (see products.routes.js) must not
+// still count toward these totals or show up in "Recent Products" just
+// because its row technically still exists for order-history's sake.
 const express = require('express');
 const { pool } = require('../config/db');
 const { requireAuth } = require('../middleware/auth');
@@ -17,11 +20,12 @@ router.get('/', async (req, res, next) => {
          COUNT(DISTINCT NULLIF(category, '')) AS totalCategories,
          SUM(CASE WHEN stock > 0 AND stock <= 10 THEN 1 ELSE 0 END) AS lowStock,
          SUM(CASE WHEN stock = 0 THEN 1 ELSE 0 END) AS outOfStock
-       FROM Inventory`
+       FROM Inventory
+       WHERE is_active = 1`
     );
 
     const [recentProducts] = await pool.execute(
-      'SELECT id, name, price, stock, category, image_url FROM Inventory ORDER BY id DESC LIMIT 5'
+      'SELECT id, name, price, stock, category, image_url FROM Inventory WHERE is_active = 1 ORDER BY id DESC LIMIT 5'
     );
 
     res.json({

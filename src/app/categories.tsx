@@ -8,6 +8,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/components/empty-state';
+import { RequireAdmin } from '@/components/role-guard';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ApiError, categoriesApi, type CategorySummary } from '@/lib/api';
@@ -42,6 +43,7 @@ export default function CategoriesScreen() {
   };
 
   return (
+    <RequireAdmin>
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ThemedText type="subtitle" style={styles.title}>
@@ -89,6 +91,7 @@ export default function CategoriesScreen() {
         )}
       </SafeAreaView>
     </ThemedView>
+    </RequireAdmin>
   );
 }
 

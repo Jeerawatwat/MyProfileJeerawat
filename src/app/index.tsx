@@ -7,6 +7,7 @@ import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { RequireAdmin } from '@/components/role-guard';
 import { StockBadge } from '@/components/stock-badge';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -60,6 +61,7 @@ export default function DashboardScreen() {
   };
 
   return (
+    <RequireAdmin>
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
@@ -141,6 +143,7 @@ export default function DashboardScreen() {
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
+    </RequireAdmin>
   );
 }
 

@@ -56,6 +56,7 @@ export function ProductFormModal({
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [description, setDescription] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -68,6 +69,7 @@ export function ProductFormModal({
     setPrice(initialProduct ? String(initialProduct.price) : '');
     setStock(initialProduct ? String(initialProduct.stock) : '');
     setImageUrl(initialProduct?.image_url ?? '');
+    setDescription(initialProduct?.description ?? '');
     setErrors([]);
     setUploadError(null);
   }, [visible, initialProduct]);
@@ -85,6 +87,7 @@ export function ProductFormModal({
       price: result.priceNumber,
       stock: result.stockNumber,
       image_url: imageUrl.trim() || null,
+      description: description.trim() || null,
     });
   };
 
@@ -224,6 +227,19 @@ export function ProductFormModal({
               )}
             </View>
 
+            <View style={styles.field}>
+              <ThemedText type="smallBold">Description (optional)</ThemedText>
+              <TextInput
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Shown to shoppers on the product detail page"
+                placeholderTextColor={theme.textSecondary}
+                multiline
+                numberOfLines={3}
+                style={[styles.input, styles.textArea, { color: theme.text, borderColor: theme.border }]}
+              />
+            </View>
+
             <View style={styles.row}>
               <View style={[styles.field, styles.rowItem]}>
                 <ThemedText type="smallBold">Price (฿)</ThemedText>
@@ -356,6 +372,10 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     fontSize: 16,
+  },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
   suggestionRow: {
     flexDirection: 'row',

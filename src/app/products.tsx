@@ -25,6 +25,7 @@ import { EmptyState } from '@/components/empty-state';
 import { ProductActionsSheet } from '@/components/product-actions-sheet';
 import { ProductCard } from '@/components/product-card';
 import { ProductFormModal } from '@/components/product-form-modal';
+import { RequireAdmin } from '@/components/role-guard';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useToast } from '@/context/toast-context';
@@ -174,6 +175,7 @@ export default function ProductsScreen() {
       : 'No products found';
 
   return (
+    <RequireAdmin>
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
@@ -315,6 +317,7 @@ export default function ProductsScreen() {
         onConfirm={handleDelete}
       />
     </ThemedView>
+    </RequireAdmin>
   );
 }
 

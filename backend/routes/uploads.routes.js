@@ -1,13 +1,14 @@
 // backend/routes/uploads.routes.js
-// Lets a logged-in user upload a product photo from their device. The file is
+// Lets a logged-in admin upload a product photo from their device. The file is
 // saved on the server's own disk (never in the database as a blob) and only
 // its public path is stored on the product row — same as pasting an external
-// image URL, just sourced locally instead.
+// image URL, just sourced locally instead. Admin-only: this is only ever used
+// from the product add/edit form, which regular "user" accounts never see.
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const multer = require('multer');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -34,7 +35,7 @@ const upload = multer({
   },
 });
 
-router.post('/image', requireAuth, (req, res) => {
+router.post('/image', requireAuth, requireRole('admin'), (req, res) => {
   upload.single('image')(req, res, (err) => {
     if (err) {
       // multer/file-filter errors are already safe, user-facing messages.

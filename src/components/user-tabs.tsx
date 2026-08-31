@@ -3,12 +3,11 @@ import { useColorScheme } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 
-// NOTE: only two dedicated tab icons (home.png / explore.png) ship with this
-// project. Products/Categories/Orders/Profile reuse them as placeholders on
-// native — swap in dedicated icon assets under assets/images/tabIcons when
-// available. The web tab bar (app-tabs.web.tsx) — the primary target per the
-// project brief — has its own icons and isn't affected by this.
-export default function AppTabs() {
+// User-role bottom tabs (native). Same "only two dedicated tab icons ship
+// with this project" situation as app-tabs.tsx (the Admin native tabs) — swap
+// in real icon assets under assets/images/tabIcons when available. The web
+// tab bar (user-tabs.web.tsx) is the primary target and has its own icons.
+export default function UserTabs() {
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
 
@@ -17,32 +16,24 @@ export default function AppTabs() {
       backgroundColor={colors.background}
       indicatorColor={colors.backgroundElement}
       labelStyle={{ selected: { color: colors.text } }}>
-      <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="shop">
+        <NativeTabs.Trigger.Label>หน้าแรก</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           src={require('@/assets/images/tabIcons/home.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="products">
-        <NativeTabs.Trigger.Label>Products</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="cart">
+        <NativeTabs.Trigger.Label>ตะกร้า</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           src={require('@/assets/images/tabIcons/explore.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="categories">
-        <NativeTabs.Trigger.Label>Categories</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="orders-admin">
-        <NativeTabs.Trigger.Label>Orders</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="orders">
+        <NativeTabs.Trigger.Label>คำสั่งซื้อ</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           src={require('@/assets/images/tabIcons/explore.png')}
           renderingMode="template"
@@ -50,7 +41,7 @@ export default function AppTabs() {
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="profile">
-        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>บัญชีของฉัน</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           src={require('@/assets/images/tabIcons/home.png')}
           renderingMode="template"

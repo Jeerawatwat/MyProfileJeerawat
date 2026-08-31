@@ -20,4 +20,17 @@ function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth };
+// Role gate — always used AFTER requireAuth (so req.user is already set and
+// already verified against the JWT signature). Never trusts a role claimed by
+// the client/body; only the role embedded in the signed token counts.
+// Usage: router.post('/', requireAuth, requireRole('admin'), handler)
+function requireRole(...allowedRoles) {
+  return function (req, res, next) {
+    if (!req.user || !allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Forbidden — you do not have permission to do this' });
+    }
+    return next();
+  };
+}
+
+module.exports = { requireAuth, requireRole };

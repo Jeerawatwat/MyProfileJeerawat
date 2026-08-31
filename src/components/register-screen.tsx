@@ -1,9 +1,8 @@
-// src/components/login-screen.tsx
-// Real login: POSTs to /api/auth/login, which checks the Users table in MySQL
-// and verifies the bcrypt hash server-side. No hard-coded credentials here.
-// role is read from the server's response/JWT and decides the destination
-// (Admin tabs vs User tabs) one level up, in _layout.tsx — this screen itself
-// doesn't know or care which role is signing in.
+// src/components/register-screen.tsx
+// Real self-service sign-up: POSTs to /api/auth/register, which inserts into
+// the same Users table Login reads, always with role='user' (the server
+// decides that, not this screen). On success we don't auto-log-in — per the
+// brief the user sees a success message and signs in themselves right after.
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,38 +11,48 @@ import { Image } from 'expo-image';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
-import { useAuth } from '@/context/auth-context';
-import { ApiError } from '@/lib/api';
+import { ApiError, authApi } from '@/lib/api';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
-export function LoginScreen({
-  prefillUsername,
-  onSwitchToRegister,
+export function RegisterScreen({
+  onRegistered,
+  onBackToLogin,
 }: {
-  prefillUsername?: string;
-  onSwitchToRegister: () => void;
+  onRegistered: (username: string) => void;
+  onBackToLogin: () => void;
 }) {
-  const { login } = useAuth();
   const theme = useTheme();
-  const [username, setUsername] = useState(prefillUsername ?? '');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleLogin = async () => {
-    if (!username.trim() || !password) {
-      setError('Please enter both username and password');
+  const handleRegister = async () => {
+    setError(null);
+
+    const cleanUsername = username.trim();
+    if (!cleanUsername || !password || !confirmPassword) {
+      setError('กรุณากรอกข้อมูลให้ครบทุกช่อง');
       return;
     }
-    setError(null);
+    if (password !== confirmPassword) {
+      setError('รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน');
+      return;
+    }
+    if (password.length < 6) {
+      setError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      await login(username.trim(), password);
+      await authApi.register(cleanUsername, password, confirmPassword);
+      onRegistered(cleanUsername);
     } catch (err) {
-      // Never surface DB errors/stack traces — only the safe message the API sent.
-      setError(err instanceof ApiError ? err.message : 'Unable to sign in right now. Please try again.');
+      setError(err instanceof ApiError ? err.message : 'สมัครสมาชิกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
     } finally {
       setIsSubmitting(false);
     }
@@ -64,13 +73,13 @@ export function LoginScreen({
             </ThemedText>
           </View>
           <ThemedText type="small" themeColor="textSecondary">
-            เข้าสู่ระบบเพื่อเข้าสู่ร้าน Mee Dood Cha
+            สร้างบัญชีเพื่อเริ่มช้อปปิ้งกับ Mee Dood Cha
           </ThemedText>
         </View>
 
         <View style={styles.form}>
           <View style={styles.field}>
-            <ThemedText type="smallBold">Username</ThemedText>
+            <ThemedText type="smallBold">ชื่อผู้ใช้</ThemedText>
             <TextInput
               value={username}
               onChangeText={setUsername}
@@ -83,24 +92,37 @@ export function LoginScreen({
           </View>
 
           <View style={styles.field}>
-            <ThemedText type="smallBold">Password</ThemedText>
+            <ThemedText type="smallBold">รหัสผ่าน</ThemedText>
             <View style={styles.passwordRow}>
               <TextInput
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
-                placeholder="Password"
+                placeholder="อย่างน้อย 6 ตัวอักษร"
                 placeholderTextColor={theme.textSecondary}
                 style={[styles.input, styles.passwordInput, { color: theme.text, borderColor: theme.border }]}
-                onSubmitEditing={handleLogin}
               />
               <Pressable onPress={() => setShowPassword((v) => !v)} style={styles.toggleButton}>
                 <ThemedText type="small" themeColor="primary">
-                  {showPassword ? 'Hide' : 'Show'}
+                  {showPassword ? 'ซ่อน' : 'แสดง'}
                 </ThemedText>
               </Pressable>
             </View>
+          </View>
+
+          <View style={styles.field}>
+            <ThemedText type="smallBold">ยืนยันรหัสผ่าน</ThemedText>
+            <TextInput
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              placeholder="กรอกรหัสผ่านอีกครั้ง"
+              placeholderTextColor={theme.textSecondary}
+              style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+              onSubmitEditing={handleRegister}
+            />
           </View>
 
           {error && (
@@ -113,24 +135,24 @@ export function LoginScreen({
 
           <Pressable
             style={[
-              styles.loginButton,
+              styles.registerButton,
               { backgroundColor: theme.primary },
-              isSubmitting && styles.loginButtonDisabled,
+              isSubmitting && styles.registerButtonDisabled,
             ]}
-            onPress={handleLogin}
+            onPress={handleRegister}
             disabled={isSubmitting}>
             {isSubmitting ? (
               <ActivityIndicator color={theme.primaryText} />
             ) : (
               <ThemedText type="smallBold" themeColor="primaryText">
-                Log In
+                สมัครสมาชิก
               </ThemedText>
             )}
           </Pressable>
 
-          <Pressable onPress={onSwitchToRegister} style={styles.registerLink} disabled={isSubmitting}>
+          <Pressable onPress={onBackToLogin} style={styles.backLink} disabled={isSubmitting}>
             <ThemedText type="small" themeColor="primary">
-              ยังไม่มีบัญชี? สมัครสมาชิก
+              มีบัญชีอยู่แล้ว? เข้าสู่ระบบ
             </ThemedText>
           </Pressable>
         </View>
@@ -199,16 +221,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D33A3F55',
   },
-  loginButton: {
+  registerButton: {
     borderRadius: Spacing.three,
     paddingVertical: Spacing.three,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loginButtonDisabled: {
+  registerButtonDisabled: {
     opacity: 0.7,
   },
-  registerLink: {
+  backLink: {
     alignItems: 'center',
     paddingVertical: Spacing.two,
   },

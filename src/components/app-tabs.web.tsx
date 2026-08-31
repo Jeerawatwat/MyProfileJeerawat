@@ -28,6 +28,9 @@ export default function AppTabs() {
           <TabTrigger name="categories" href="/categories" asChild>
             <TabButton icon="🏷️">Categories</TabButton>
           </TabTrigger>
+          <TabTrigger name="orders-admin" href="/orders-admin" asChild>
+            <TabButton icon="🧾">Orders</TabButton>
+          </TabTrigger>
           <TabTrigger name="profile" href="/profile" asChild>
             <TabButton icon="👤">Profile</TabButton>
           </TabTrigger>
@@ -46,7 +49,7 @@ export function TabButton({ children, icon, isFocused, ...props }: TabButtonProp
         type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
         style={styles.tabButtonView}>
         {icon ? <ThemedText style={styles.tabIcon}>{icon}</ThemedText> : null}
-        <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'}>
+        <ThemedText type="small" numberOfLines={1} themeColor={isFocused ? 'text' : 'textSecondary'}>
           {children}
         </ThemedText>
       </ThemedView>

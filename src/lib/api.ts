@@ -49,6 +49,7 @@ export type Product = {
   stock: number;
   category: string;
   image_url: string | null;
+  description: string | null;
 };
 
 export type ProductInput = {
@@ -57,6 +58,7 @@ export type ProductInput = {
   stock: number;
   category: string;
   image_url?: string | null;
+  description?: string | null;
 };
 
 export type CategorySummary = { category: string; productCount: number };
@@ -77,6 +79,11 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
+  register: (username: string, password: string, confirmPassword: string) =>
+    request<{ success: boolean; user: AuthUser }>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, confirmPassword }),
+    }),
   me: () => request<{ user: AuthUser }>('/api/auth/me'),
   logout: () => request<{ success: boolean }>('/api/auth/logout', { method: 'POST' }),
 };
@@ -89,6 +96,7 @@ export const productsApi = {
     const qs = query.toString();
     return request<Product[]>(`/api/products${qs ? `?${qs}` : ''}`);
   },
+  get: (id: number) => request<Product>(`/api/products/${id}`),
   create: (data: ProductInput) =>
     request<Product>('/api/products', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: number, data: ProductInput) =>
@@ -112,6 +120,61 @@ export const uploadsApi = {
     form.append('image', file, filename);
     return request<{ url: string }>('/api/uploads/image', { method: 'POST', body: form });
   },
+};
+
+// ---- Orders --------------------------------------------------------------
+
+export const ORDER_STATUSES = [
+  'รอดำเนินการ',
+  'กำลังจัดเตรียมสินค้า',
+  'จัดส่งแล้ว',
+  'สำเร็จ',
+  'ยกเลิก',
+] as const;
+
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+export type OrderItem = {
+  product_id: number;
+  name: string;
+  quantity: number;
+  price: number;
+  subtotal: number;
+};
+
+export type Order = {
+  order_id: number;
+  user_id: number;
+  username?: string; // present on admin's order list/detail
+  order_date: string;
+  total_amount: number;
+  status: OrderStatus | string;
+  cancel_reason?: string | null; // set when status is 'ยกเลิก', explains why to the buyer
+  items: OrderItem[];
+};
+
+export type CreateOrderInput = {
+  items: { product_id: number; quantity: number }[];
+};
+
+export const ordersApi = {
+  list: () => request<Order[]>('/api/orders'),
+  get: (id: number) => request<Order>(`/api/orders/${id}`),
+  create: (data: CreateOrderInput) =>
+    request<{ order_id: number; total_amount: number; status: string; items: OrderItem[] }>('/api/orders', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  // `reason` is required by the backend only when moving an order INTO
+  // 'ยกเลิก' for the first time — pass it whenever the admin typed one.
+  updateStatus: (id: number, status: string, reason?: string) =>
+    request<{ success: boolean; order_id: number; status: string; cancel_reason: string | null }>(
+      `/api/orders/${id}/status`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(reason ? { status, reason } : { status }),
+      }
+    ),
 };
 
 export function resolveImageUrl(imageUrl: string | null | undefined): string | null {

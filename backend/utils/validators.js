@@ -38,7 +38,35 @@ function validateProductInput(body, { partial = false } = {}) {
     data.image_url = raw || null;
   }
 
+  if (!partial || body.description !== undefined) {
+    // Optional free-text description shown to shoppers on the User side.
+    const raw = typeof body.description === 'string' ? body.description.trim() : '';
+    if (raw.length > 4000) errors.push('Description must be 4000 characters or fewer');
+    data.description = raw || null;
+  }
+
   return { errors, data };
 }
 
-module.exports = { validateProductInput };
+// Username/password rules shared by register (and available for future use by
+// an admin "create user" flow). Kept intentionally simple and dependency-free.
+function validateCredentials({ username, password }) {
+  const errors = [];
+  const cleanUsername = typeof username === 'string' ? username.trim() : '';
+
+  if (!cleanUsername) {
+    errors.push('Username is required');
+  } else if (cleanUsername.length < 3 || cleanUsername.length > 50) {
+    errors.push('Username must be between 3 and 50 characters');
+  } else if (!/^[a-zA-Z0-9_.]+$/.test(cleanUsername)) {
+    errors.push('Username may only contain letters, numbers, underscore, and dot');
+  }
+
+  if (typeof password !== 'string' || password.length < 6) {
+    errors.push('Password must be at least 6 characters');
+  }
+
+  return { errors, username: cleanUsername };
+}
+
+module.exports = { validateProductInput, validateCredentials };
