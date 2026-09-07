@@ -132,7 +132,11 @@ function ShopScreenContent() {
           />
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipScroll}
+          contentContainerStyle={styles.chipRow}>
           {chips.map((cat) => {
             const isActive = activeCategory === cat;
             return (
@@ -172,6 +176,7 @@ function ShopScreenContent() {
         ) : (
           <FlatList
             key={numColumns}
+            style={styles.list}
             data={products}
             keyExtractor={(item) => String(item.id)}
             numColumns={numColumns}
@@ -257,11 +262,16 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.select({ web: Spacing.two, default: Spacing.three }),
     fontSize: 15,
   },
+  chipScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   chipRow: {
     gap: Spacing.two,
     paddingBottom: Spacing.one,
   },
   chip: {
+    flexShrink: 0,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.four,
@@ -281,6 +291,9 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     borderWidth: 1,
     borderColor: '#D33A3F55',
+  },
+  list: {
+    flex: 1,
   },
   listContent: {
     paddingBottom: BottomTabInset + Spacing.six,

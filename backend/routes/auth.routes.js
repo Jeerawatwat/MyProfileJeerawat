@@ -11,6 +11,7 @@ const { validateCredentials } = require('../utils/validators');
 
 const router = express.Router();
 
+// ===== ล็อกอิน (Login) =====
 router.post('/login', async (req, res, next) => {
   try {
     const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
@@ -52,6 +53,7 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
+// ===== สมัครสมาชิก (Register) =====
 // Self-service sign-up for shoppers. Always creates role = 'user' — the body
 // is never trusted for role, even if a client sends role: "admin". Turning a
 // user into an admin is only ever done directly in the database/admin tooling.

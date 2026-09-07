@@ -26,6 +26,16 @@ function initials(name: string) {
   return name.trim().slice(0, 2).toUpperCase() || '?';
 }
 
+// AI/ML Price Auto Cluster (K-Means) — small read-only badge showing which
+// price tier this product's price landed in. Purely cosmetic colors; the
+// tier itself is computed on the backend (see backend/services/priceClustering.js)
+// and arrives already attached to `product.priceTier` — no extra API call.
+const TIER_BADGE_COLORS: Record<string, { bg: string; text: string }> = {
+  Budget: { bg: '#E4F3E6', text: '#2F7D3C' },
+  Standard: { bg: '#FFF3D6', text: '#946600' },
+  Premium: { bg: '#F1E6FB', text: '#6B32A8' },
+};
+
 export function ProductCard({ product, index = 0, layout = 'grid', onMenu }: ProductCardProps) {
   const theme = useTheme();
   const photoUrl = resolveImageUrl(product.image_url);
@@ -85,9 +95,24 @@ export function ProductCard({ product, index = 0, layout = 'grid', onMenu }: Pro
               <View style={[styles.dot, { backgroundColor: theme.textSecondary }]} />
             </Pressable>
           </View>
-          <ThemedText type="small" themeColor="textSecondary">
-            {product.category}
-          </ThemedText>
+          <View style={styles.categoryRow}>
+            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1} style={styles.categoryText}>
+              {product.category}
+            </ThemedText>
+            {product.priceTier ? (
+              <View
+                style={[
+                  styles.tierBadge,
+                  { backgroundColor: TIER_BADGE_COLORS[product.priceTier]?.bg ?? theme.backgroundElement },
+                ]}>
+                <ThemedText
+                  type="small"
+                  style={[styles.tierBadgeText, { color: TIER_BADGE_COLORS[product.priceTier]?.text ?? theme.textSecondary }]}>
+                  {product.priceTier}
+                </ThemedText>
+              </View>
+            ) : null}
+          </View>
           <View style={styles.footerRow}>
             <ThemedText type="smallBold" style={styles.price}>
               {formatBaht(product.price)}
@@ -171,6 +196,25 @@ const styles = StyleSheet.create({
   },
   name: {
     flex: 1,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  categoryText: {
+    flex: 1,
+  },
+  tierBadge: {
+    paddingVertical: 2,
+    paddingHorizontal: 7,
+    borderRadius: 8,
+  },
+  tierBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   menuButton: {
     flexDirection: 'row',

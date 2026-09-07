@@ -42,6 +42,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+// 'Budget' | 'Standard' | 'Premium' — computed server-side by a real K-Means
+// clustering pass over all active products' prices (see
+// backend/services/priceClustering.js). Recomputed fresh on every
+// GET /api/products request; never stored in the database. `null`/undefined
+// only if the backend genuinely has no price data to cluster.
+export type PriceTier = 'Budget' | 'Standard' | 'Premium';
+
 export type Product = {
   id: number;
   name: string;
@@ -50,6 +57,7 @@ export type Product = {
   category: string;
   image_url: string | null;
   description: string | null;
+  priceTier?: PriceTier | null;
 };
 
 export type ProductInput = {

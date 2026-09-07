@@ -11,18 +11,20 @@
 // are admin-only: a plain "user" role must never be able to change price,
 // stock, or delete a product, even by calling the API directly.
 //
-// "Deleting" a product is a SOFT delete (Inventory.is_active = 0), not a real
-// row deletion. A hard DELETE used to fail outright once a product had ever
-// been ordered (Order_Details.product_id is a foreign key into this table,
-// so removing the row would either violate that constraint or corrupt order
-// history). Soft-deleting instead just hides the product from every GET here
-// — so it disappears from the Admin Products page and the User shop — while
-// past orders keep JOINing against the real, unchanged row and still show
-// its correct name/price (see sql/004_soft_delete_products.sql).
+// "Deleting" a product is a real HARD delete (the row is actually removed
+// from Inventory), per instructor requirement. Order_Details.product_id is a
+// foreign key into this table, so deleting a product that has been ordered
+// first removes every Order_Details row referencing it, then removes any
+// Order left with zero line items as a result — the whole delete runs in one
+// transaction so a product and its order history disappear together or not
+// at all. is_active still exists on legacy rows from the old soft-delete
+// scheme (see sql/004_soft_delete_products.sql) and every GET here still
+// filters on it, but no code path sets it to 0 anymore.
 const express = require('express');
 const { pool } = require('../config/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { validateProductInput } = require('../utils/validators');
+const { computePriceTiers } = require('../services/priceClustering');
 
 const router = express.Router();
 
@@ -30,6 +32,27 @@ const SELECT_COLUMNS = 'id, name, price, stock, category, image_url, description
 
 router.use(requireAuth);
 
+// ===== AI/ML Price Auto Cluster =====
+// AI/ML Price Auto Cluster (K-Means) — attaches a `priceTier` field
+// ('Budget' | 'Standard' | 'Premium' | null) to product rows without
+// touching the database (no new column, nothing cached). Every call
+// re-reads the full ACTIVE catalog's prices and re-runs K-Means fresh, so a
+// product's tier always reflects the current price spread of the whole
+// shop — not just whatever subset a search/category filter happens to
+// return. See backend/services/priceClustering.js for the algorithm.
+async function attachPriceTiers(rows) {
+  const [activeProducts] = await pool.execute(
+    'SELECT id, price FROM Inventory WHERE is_active = 1'
+  );
+  const tierByProductId = computePriceTiers(activeProducts);
+
+  return rows.map((row) => ({
+    ...row,
+    priceTier: tierByProductId.get(row.id) ?? null,
+  }));
+}
+
+// ===== ค้นหา (Search) =====
 // GET /api/products?search=&category=
 // search matches product name OR the numeric id (the closest thing this table
 // has to a "product code") so the User search box can look up either.
@@ -62,7 +85,7 @@ router.get('/', async (req, res, next) => {
       params
     );
 
-    res.json(rows);
+    res.json(await attachPriceTiers(rows));
   } catch (err) {
     next(err);
   }
@@ -79,12 +102,14 @@ router.get('/:id', async (req, res, next) => {
     );
 
     if (!rows[0]) return res.status(404).json({ error: 'Product not found' });
-    res.json(rows[0]);
+    const [withTier] = await attachPriceTiers(rows);
+    res.json(withTier);
   } catch (err) {
     next(err);
   }
 });
 
+// ===== เพิ่ม (Add / Create) =====
 router.post('/', requireRole('admin'), async (req, res, next) => {
   try {
     const { errors, data } = validateProductInput(req.body);
@@ -105,6 +130,7 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
   }
 });
 
+// ===== แก้ไข (Edit / Update) =====
 router.put('/:id', requireRole('admin'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -127,23 +153,51 @@ router.put('/:id', requireRole('admin'), async (req, res, next) => {
   }
 });
 
+// ===== ลบ (Delete) =====
 router.delete('/:id', requireRole('admin'), async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid product id' });
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid product id' });
 
-    // Soft delete — see the comment at the top of this file. Only flips a
-    // still-active row so deleting the same id twice cleanly 404s the
-    // second time instead of reporting fake success.
-    const [result] = await pool.execute(
-      'UPDATE Inventory SET is_active = 0 WHERE id = ? AND is_active = 1',
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query('SELECT id FROM Inventory WHERE id = ? FOR UPDATE', [id]);
+    if (rows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    // Remove every Order_Details row that references this product, then any
+    // Order left with zero line items as a result, before removing the
+    // product itself — otherwise the Order_Details.product_id foreign key
+    // would reject the delete outright.
+    const [affectedOrders] = await conn.query(
+      'SELECT DISTINCT order_id FROM Order_Details WHERE product_id = ?',
       [id]
     );
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Product not found' });
+    await conn.query('DELETE FROM Order_Details WHERE product_id = ?', [id]);
 
+    for (const { order_id } of affectedOrders) {
+      const [[{ remaining }]] = await conn.query(
+        'SELECT COUNT(*) AS remaining FROM Order_Details WHERE order_id = ?',
+        [order_id]
+      );
+      if (remaining === 0) {
+        await conn.query('DELETE FROM Orders WHERE order_id = ?', [order_id]);
+      }
+    }
+
+    await conn.query('DELETE FROM Inventory WHERE id = ?', [id]);
+
+    await conn.commit();
     res.json({ success: true });
   } catch (err) {
+    if (conn) await conn.rollback();
     next(err);
+  } finally {
+    if (conn) conn.release();
   }
 });
 
