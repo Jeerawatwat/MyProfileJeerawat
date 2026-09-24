@@ -22,7 +22,7 @@ const STAT_TILES: Array<{
   icon: string;
   tone?: 'warning' | 'danger';
 }> = [
-  { key: 'totalProducts', label: 'Total Products', icon: '📦1111' },
+  { key: 'totalProducts', label: 'Total Products', icon: '📦11111111' },
   { key: 'totalCategories', label: 'Categories', icon: '🏷️' },
   { key: 'lowStock', label: 'Low Stock', icon: '⚠️', tone: 'warning' },
   { key: 'outOfStock', label: 'Out of Stock', icon: '⛔', tone: 'danger' },
