@@ -4,17 +4,17 @@
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAdmin } from '@/components/role-guard';
 import { StockBadge } from '@/components/stock-badge';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useAuth } from '@/context/auth-context';
-import { ApiError, dashboardApi, formatBaht, resolveImageUrl, type DashboardStats } from '@/lib/api';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useAuth } from '@/context/auth-context';
 import { useTheme } from '@/hooks/use-theme';
+import { ApiError, dashboardApi, formatBaht, resolveImageUrl, type DashboardStats } from '@/lib/api';
 
 const STAT_TILES: Array<{
   key: keyof Pick<DashboardStats, 'totalProducts' | 'totalCategories' | 'lowStock' | 'outOfStock'>;
@@ -22,7 +22,7 @@ const STAT_TILES: Array<{
   icon: string;
   tone?: 'warning' | 'danger';
 }> = [
-  { key: 'totalProducts', label: 'Total Products', icon: '📦' },
+  { key: 'totalProducts', label: 'Total Products', icon: '📦111' },
   { key: 'totalCategories', label: 'Categories', icon: '🏷️' },
   { key: 'lowStock', label: 'Low Stock', icon: '⚠️', tone: 'warning' },
   { key: 'outOfStock', label: 'Out of Stock', icon: '⛔', tone: 'danger' },
