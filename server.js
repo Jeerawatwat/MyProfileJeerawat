@@ -17,6 +17,10 @@ const categoriesRoutes = require('./backend/routes/categories.routes');
 const dashboardRoutes = require('./backend/routes/dashboard.routes');
 const uploadsRoutes = require('./backend/routes/uploads.routes');
 const ordersRoutes = require('./backend/routes/orders.routes');
+const paymentsRoutes = require('./backend/routes/payments.routes');
+const refundsRoutes = require('./backend/routes/refunds.routes');
+const expensesRoutes = require('./backend/routes/expenses.routes');
+const financialReportsRoutes = require('./backend/routes/financial-reports.routes');
 
 const app = express();
 const port = process.env.PORT || 3079;
@@ -46,6 +50,13 @@ app.use('/api/categories', categoriesRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/uploads', uploadsRoutes);
 app.use('/api/orders', ordersRoutes);
+// Accounting / finance. Payment slips, refund evidence and expense receipts
+// live in private_uploads/ — deliberately NOT served by express.static above;
+// they're only readable through these routes, after the role/ownership check.
+app.use('/api/payments', paymentsRoutes);
+app.use('/api/refunds', refundsRoutes);
+app.use('/api/expenses', expensesRoutes);
+app.use('/api/financial-reports', financialReportsRoutes);
 
 // Legacy endpoint kept for backwards compatibility with the original server.js.
 // It now requires auth (it used to be public), because it returns the same real

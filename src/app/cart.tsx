@@ -165,15 +165,28 @@ function CartScreenContent() {
               สั่งซื้อสำเร็จ!
             </ThemedText>
             <ThemedText themeColor="textSecondary">Order ID: #{successOrderId}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.successHint}>
+              กรุณาชำระเงินและแนบสลิป ร้านจะเริ่มจัดเตรียมสินค้าหลังฝ่ายบัญชียืนยันการชำระเงิน
+            </ThemedText>
             <Pressable
               style={[styles.button, { backgroundColor: theme.primary }]}
+              onPress={() => {
+                const orderId = successOrderId;
+                setSuccessOrderId(null);
+                // My Orders opens this order's payment sheet from ?pay=<id>.
+                router.push({ pathname: '/orders', params: { pay: String(orderId) } });
+              }}>
+              <ThemedText type="smallBold" themeColor="primaryText">
+                ชำระเงินเลย
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              style={[styles.button, { backgroundColor: theme.backgroundElement }]}
               onPress={() => {
                 setSuccessOrderId(null);
                 router.push('/orders');
               }}>
-              <ThemedText type="smallBold" themeColor="primaryText">
-                ดูคำสั่งซื้อ
-              </ThemedText>
+              <ThemedText type="smallBold">ดูคำสั่งซื้อ</ThemedText>
             </Pressable>
             <Pressable
               style={[styles.button, { backgroundColor: theme.backgroundElement }]}
@@ -321,6 +334,9 @@ const styles = StyleSheet.create({
   },
   successTitle: {
     marginTop: Spacing.one,
+  },
+  successHint: {
+    textAlign: 'center',
   },
   button: {
     width: '100%',
