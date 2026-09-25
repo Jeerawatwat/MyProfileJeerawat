@@ -42,3 +42,6 @@ example
 # generated native folders
 /ios
 /android
+
+# payment slips / refund evidence / expense receipts (private, never commit)
+private_uploads/

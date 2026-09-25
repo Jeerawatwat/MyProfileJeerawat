@@ -11,21 +11,34 @@ import type { ReactNode } from 'react';
 
 import { useAuth } from '@/context/auth-context';
 
+// Where each role lands when it hits a screen that isn't theirs.
+function homeFor(role: string) {
+  if (role === 'admin') return '/' as const;
+  if (role === 'accounting') return '/accounting' as const;
+  return '/shop' as const;
+}
+
 export function RequireAdmin({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   // AuthGate above this in the tree already guarantees `user` is set before
   // any tab screen mounts, but we guard defensively anyway.
   if (!user) return null;
-  if (user.role !== 'admin') return <Redirect href="/shop" />;
+  if (user.role !== 'admin') return <Redirect href={homeFor(user.role)} />;
   return <>{children}</>;
 }
 
 export function RequireUser({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   if (!user) return null;
-  // Admins aren't forbidden from the concept of the shop, but they land on
-  // their own dashboard by default rather than being routed into User-only
-  // screens — keeps "which app am I in" unambiguous.
-  if (user.role === 'admin') return <Redirect href="/" />;
+  // Admins (and accounting) aren't routed into User-only screens — they land
+  // on their own home instead, keeping "which app am I in" unambiguous.
+  if (user.role !== 'user') return <Redirect href={homeFor(user.role)} />;
+  return <>{children}</>;
+}
+
+export function RequireAccounting({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  if (!user) return null;
+  if (user.role !== 'accounting') return <Redirect href={homeFor(user.role)} />;
   return <>{children}</>;
 }

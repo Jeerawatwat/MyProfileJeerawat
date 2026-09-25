@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/components/empty-state';
 import { OrderStatusBadge } from '@/components/order-status-badge';
+import { PaymentStatusBadge } from '@/components/payment-status-badge';
 import { RequireAdmin } from '@/components/role-guard';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -159,7 +160,13 @@ function OrdersAdminScreenContent() {
                       {formatDate(order.order_date)}
                     </ThemedText>
                   </View>
-                  <OrderStatusBadge status={order.status} />
+                  {/* Payment state is set only by accounting; moving an order
+                      into preparing/shipped/completed is refused by the
+                      backend until this reads PAID. */}
+                  <View style={styles.badges}>
+                    <OrderStatusBadge status={order.status} />
+                    <PaymentStatusBadge status={order.payment_status} />
+                  </View>
                 </View>
 
                 {order.status === CANCEL_STATUS && order.cancel_reason ? (
@@ -323,6 +330,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+  },
+  badges: {
+    alignItems: 'flex-end',
+    gap: Spacing.one,
   },
   cancelReasonBox: {
     borderRadius: Spacing.two,

@@ -5,6 +5,7 @@ import { ActivityIndicator } from 'react-native';
 import type { ReactNode } from 'react';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import AccountingTabs from '@/components/accounting-tabs';
 import AppTabs from '@/components/app-tabs';
 import UserTabs from '@/components/user-tabs';
 import { BrandHeader } from '@/components/brand-header';
@@ -14,6 +15,7 @@ import { RegisterScreen } from '@/components/register-screen';
 import { ThemedView } from '@/components/themed-view';
 import { AuthProvider, useAuth } from '@/context/auth-context';
 import { CartProvider } from '@/context/cart-context';
+import { ReportRangeProvider } from '@/context/report-range-context';
 import { ThemeModeProvider, useThemeMode } from '@/context/theme-context';
 import { ToastProvider, useToast } from '@/context/toast-context';
 
@@ -50,6 +52,8 @@ function UnauthenticatedGate() {
 // flow is rendered — never both, so an unauthenticated visitor can never see
 // Dashboard/Products/Shop/etc., and role decides which tab set mounts:
 //   - role === 'admin' -> AppTabs (Dashboard, Products, Categories, Orders, Profile)
+//   - role === 'accounting' -> AccountingTabs (Reports, Orders [read-only],
+//                              Payments, Refunds, Income/Expenses, Account)
 //   - role === 'user'  -> UserTabs (Shop, Cart, My Orders, Account)
 // This is the one place that decision is made — nowhere else guesses at it.
 function AuthGate() {
@@ -67,13 +71,23 @@ function AuthGate() {
     return <UnauthenticatedGate />;
   }
 
-  const isAdmin = user.role === 'admin';
+  let tabs = <UserTabs />;
+  if (user.role === 'admin') {
+    tabs = <AppTabs />;
+  } else if (user.role === 'accounting') {
+    // One date range shared by every accounting tab.
+    tabs = (
+      <ReportRangeProvider>
+        <AccountingTabs />
+      </ReportRangeProvider>
+    );
+  }
 
   return (
     <CartProvider>
       <ThemedView style={{ flex: 1 }}>
         <BrandHeader />
-        <ThemedView style={{ flex: 1 }}>{isAdmin ? <AppTabs /> : <UserTabs />}</ThemedView>
+        <ThemedView style={{ flex: 1 }}>{tabs}</ThemedView>
         <ChatFab />
       </ThemedView>
     </CartProvider>

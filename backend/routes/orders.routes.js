@@ -16,6 +16,13 @@ const router = express.Router();
 
 const ALLOWED_STATUSES = ['รอดำเนินการ', 'กำลังจัดเตรียมสินค้า', 'จัดส่งแล้ว', 'สำเร็จ', 'ยกเลิก'];
 const CANCELLED_STATUS = 'ยกเลิก';
+// Fulfilment steps that may only start once accounting has confirmed the
+// money (Orders.payment_status = 'PAID', see sql/005_accounting_finance.sql).
+const REQUIRES_PAYMENT_STATUSES = ['กำลังจัดเตรียมสินค้า', 'จัดส่งแล้ว', 'สำเร็จ'];
+
+// Roles that may read every order. Accounting reads them for financial
+// checking only — it has no write route in this file.
+const ALL_ORDERS_ROLES = ['admin', 'accounting'];
 
 router.use(requireAuth);
 
@@ -101,10 +108,14 @@ router.post('/', async (req, res, next) => {
 
     await conn.commit();
 
+    // shipping_fee / discount / payment_status are left to their column
+    // defaults (0, 0, PENDING_PAYMENT), so total_amount above is already the
+    // full amount due: items + shipping_fee - discount.
     res.status(201).json({
       order_id: orderId,
       total_amount: totalAmount,
       status: ALLOWED_STATUSES[0],
+      payment_status: 'PENDING_PAYMENT',
       items: lockedProducts.map((p) => ({
         product_id: p.id,
         name: p.name,
@@ -152,18 +163,57 @@ async function attachOrderDetails(orders) {
       subtotal: Number(row.subtotal),
     });
   }
-  return orders.map((o) => ({ ...o, items: byOrder.get(o.order_id) || [] }));
+
+  // Latest payment attempt per order (a rejected slip followed by a new one
+  // shows the new one) and every refund request, so both the buyer's and
+  // accounting's order screens can show money state without extra calls.
+  const [paymentRows] = await pool.query(
+    `SELECT payment_id, order_id, amount, payment_method, payment_status, rejected_reason, receipt_no, verified_at, created_at
+     FROM Payments WHERE order_id IN (${placeholders}) ORDER BY payment_id DESC`,
+    orderIds
+  );
+  const latestPayment = new Map();
+  for (const p of paymentRows) {
+    if (!latestPayment.has(p.order_id)) latestPayment.set(p.order_id, { ...p, amount: Number(p.amount) });
+  }
+
+  const [refundRows] = await pool.query(
+    `SELECT refund_id, order_id, refund_amount, reason, status, rejected_reason, created_at
+     FROM Refunds WHERE order_id IN (${placeholders}) ORDER BY refund_id ASC`,
+    orderIds
+  );
+  const refundsByOrder = new Map();
+  for (const r of refundRows) {
+    if (!refundsByOrder.has(r.order_id)) refundsByOrder.set(r.order_id, []);
+    refundsByOrder.get(r.order_id).push({ ...r, refund_amount: Number(r.refund_amount) });
+  }
+
+  return orders.map((o) => {
+    const items = byOrder.get(o.order_id) || [];
+    return {
+      ...o,
+      shipping_fee: Number(o.shipping_fee),
+      discount: Number(o.discount),
+      product_amount: Math.round(items.reduce((sum, i) => sum + i.subtotal * 100, 0)) / 100,
+      items,
+      payment: latestPayment.get(o.order_id) || null,
+      refunds: refundsByOrder.get(o.order_id) || [],
+    };
+  });
 }
 
-// GET /api/orders — admin sees every order (with the buyer's username); a
-// regular user only ever sees their own. Enforced server-side, not just hidden
-// in the UI, so a "user" role can never read someone else's order history.
+const ORDER_COLUMNS = 'o.order_id, o.user_id, o.order_date, o.total_amount, o.status, o.cancel_reason, o.payment_status, o.shipping_fee, o.discount';
+
+// GET /api/orders — admin and accounting see every order (with the buyer's
+// username); a regular user only ever sees their own. Enforced server-side,
+// not just hidden in the UI, so a "user" role can never read someone else's
+// order history.
 router.get('/', async (req, res, next) => {
   try {
     let orders;
-    if (req.user.role === 'admin') {
+    if (ALL_ORDERS_ROLES.includes(req.user.role)) {
       const [rows] = await pool.query(
-        `SELECT o.order_id, o.user_id, o.order_date, o.total_amount, o.status, o.cancel_reason, u.username
+        `SELECT ${ORDER_COLUMNS}, u.username
          FROM Orders o
          JOIN Users u ON u.id = o.user_id
          ORDER BY o.order_date DESC`
@@ -171,8 +221,8 @@ router.get('/', async (req, res, next) => {
       orders = rows;
     } else {
       const [rows] = await pool.execute(
-        `SELECT order_id, user_id, order_date, total_amount, status, cancel_reason
-         FROM Orders WHERE user_id = ? ORDER BY order_date DESC`,
+        `SELECT ${ORDER_COLUMNS}
+         FROM Orders o WHERE o.user_id = ? ORDER BY o.order_date DESC`,
         [req.user.id]
       );
       orders = rows;
@@ -191,14 +241,14 @@ router.get('/:id', async (req, res, next) => {
     if (!Number.isInteger(id)) return res.status(400).json({ error: 'รหัสคำสั่งซื้อไม่ถูกต้อง' });
 
     const [rows] = await pool.execute(
-      `SELECT o.order_id, o.user_id, o.order_date, o.total_amount, o.status, o.cancel_reason, u.username
+      `SELECT ${ORDER_COLUMNS}, u.username
        FROM Orders o JOIN Users u ON u.id = o.user_id WHERE o.order_id = ?`,
       [id]
     );
     const order = rows[0];
     // A "user" asking for someone else's order gets the same 404 as an order
     // that doesn't exist — never confirm/deny another user's order id.
-    if (!order || (req.user.role !== 'admin' && order.user_id !== req.user.id)) {
+    if (!order || (!ALL_ORDERS_ROLES.includes(req.user.role) && order.user_id !== req.user.id)) {
       return res.status(404).json({ error: 'ไม่พบคำสั่งซื้อ' });
     }
     order.total_amount = Number(order.total_amount);
@@ -232,11 +282,20 @@ router.patch('/:id/status', requireRole('admin'), async (req, res, next) => {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
-    const [orderRows] = await conn.query('SELECT order_id, status FROM Orders WHERE order_id = ? FOR UPDATE', [id]);
+    const [orderRows] = await conn.query('SELECT order_id, status, payment_status FROM Orders WHERE order_id = ? FOR UPDATE', [id]);
     const order = orderRows[0];
     if (!order) {
       await conn.rollback();
       return res.status(404).json({ error: 'ไม่พบคำสั่งซื้อ' });
+    }
+
+    // The order must not move on to fulfilment until accounting has
+    // confirmed the payment — checked here, not just hidden in the UI.
+    if (status !== order.status && REQUIRES_PAYMENT_STATUSES.includes(status) && order.payment_status !== 'PAID') {
+      await conn.rollback();
+      return res.status(409).json({
+        error: 'ยังเปลี่ยนสถานะนี้ไม่ได้ — ฝ่ายบัญชียังไม่ได้ยืนยันการชำระเงินของคำสั่งซื้อนี้',
+      });
     }
 
     const wasCancelled = order.status === CANCELLED_STATUS;

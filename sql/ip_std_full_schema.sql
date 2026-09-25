@@ -18,6 +18,10 @@
 --
 -- All CREATE TABLEs use IF NOT EXISTS, so this is safe to re-run — e.g. after
 -- the first run got as far as Inventory/Users before failing.
+--
+-- After this script, also run sql/005_accounting_finance.sql (accounting
+-- role, Orders.payment_status/shipping_fee/discount, Payments, Refunds,
+-- Expenses, Audit_Logs) — the backend requires those tables and columns.
 
 CREATE TABLE IF NOT EXISTS `Users` (
   `id` INT NOT NULL AUTO_INCREMENT,

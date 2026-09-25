@@ -17,7 +17,9 @@
 // first removes every Order_Details row referencing it, then removes any
 // Order left with zero line items as a result — the whole delete runs in one
 // transaction so a product and its order history disappear together or not
-// at all. is_active still exists on legacy rows from the old soft-delete
+// at all. Exception: a product in any order that already has a payment on
+// file is refused with 409 (see the guard in DELETE /:id) so accounting
+// history is never destroyed. is_active still exists on legacy rows from the old soft-delete
 // scheme (see sql/004_soft_delete_products.sql) and every GET here still
 // filters on it, but no code path sets it to 0 anymore.
 const express = require('express');
@@ -177,6 +179,25 @@ router.delete('/:id', requireRole('admin'), async (req, res, next) => {
       'SELECT DISTINCT order_id FROM Order_Details WHERE product_id = ?',
       [id]
     );
+
+    // Financial records guard: an order that has any payment on file (a
+    // submitted slip, a confirmed payment with a receipt, or a rejected
+    // attempt) is part of the accounting history. Deleting it would change
+    // past income/refund figures and orphan receipts, so such products can't
+    // be hard-deleted. Products only in never-paid orders delete as before.
+    if (affectedOrders.length > 0) {
+      const orderIds = affectedOrders.map((o) => o.order_id);
+      const [[{ paidCount }]] = await conn.query(
+        `SELECT COUNT(*) AS paidCount FROM Payments WHERE order_id IN (${orderIds.map(() => '?').join(',')})`,
+        orderIds
+      );
+      if (Number(paidCount) > 0) {
+        await conn.rollback();
+        return res.status(409).json({
+          error: 'ลบสินค้านี้ไม่ได้ เพราะอยู่ในคำสั่งซื้อที่มีข้อมูลการชำระเงินแล้ว (ต้องเก็บไว้เป็นหลักฐานทางบัญชี) — แนะนำให้ตั้งสต๊อกเป็น 0 แทน',
+        });
+      }
+    }
     await conn.query('DELETE FROM Order_Details WHERE product_id = ?', [id]);
 
     for (const { order_id } of affectedOrders) {
