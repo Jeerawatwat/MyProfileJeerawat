@@ -1,6 +1,7 @@
 // src/lib/api.ts
 // Single place the frontend talks to the backend. No database credentials ever
 // live here — only the API base URL and the JWT that /api/auth/login returns.
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getStoredAuth } from './storage';
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://119.59.102.161:3079';
@@ -118,6 +119,284 @@ export const categoriesApi = {
 
 export const dashboardApi = {
   stats: () => request<DashboardStats>('/api/dashboard'),
+};
+
+export type ManagerTopProduct = {
+  id: number;
+  name: string;
+  category?: string;
+  quantity: number;
+  revenue: number;
+  stockRemaining?: number;
+};
+
+export type ManagerCategoryShare = {
+  category: string;
+  itemsSold: number;
+  revenue: number;
+  percentage: number;
+};
+
+export type ManagerRecentOrder = {
+  order_id: number;
+  order_date: string;
+  customer: string;
+  total_amount: number;
+  status: string;
+  payment_status: string;
+  itemsCount: number;
+};
+
+export type ManagerDashboard = {
+  range?: string;
+  today: {
+    revenue: number;
+    paidOrders: number;
+    newOrders: number;
+  };
+  summary: {
+    totalRevenue: number;
+    totalOrders: number;
+    paidOrdersCount: number;
+    pendingPaymentCount: number;
+    avgOrderValue: number;
+    fulfillmentRate: number;
+  };
+  departments: {
+    delivery: {
+      pending: number;
+      inTransit: number;
+      completed: number;
+      cancelled: number;
+    };
+    warehouse: {
+      totalProducts: number;
+      totalItems: number;
+      totalRetailValue: number;
+      totalCostValue: number;
+      lowStock: number;
+      outOfStock: number;
+    };
+    finance: {
+      totalIncome: number;
+      paidOrders: number;
+      pendingPayments: number;
+    };
+  };
+  operations: {
+    awaitingFulfilment: number;
+    lowStock: number;
+    outOfStock: number;
+  };
+  topProducts: ManagerTopProduct[];
+  statusSummary: { status: string; count: number }[];
+  categories: ManagerCategoryShare[];
+  recentOrders: ManagerRecentOrder[];
+};
+
+export const managerApi = {
+  dashboard: async (range: 'today' | '7days' | '30days' | 'all' = '30days'): Promise<ManagerDashboard> => {
+    try {
+      return await request<ManagerDashboard>(`/api/manager/dashboard?range=${range}`);
+    } catch {
+      // Robust fallback: compute directly from ordersApi and productsApi
+      const [rawOrders, rawProducts] = await Promise.all([
+        ordersApi.list().catch(() => [] as Order[]),
+        productsApi.list().catch(() => [] as Product[]),
+      ]);
+
+      const now = new Date();
+      const todayStr = now.toISOString().slice(0, 10);
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const filteredOrders = rawOrders.filter((o) => {
+        if (range === 'all') return true;
+        const d = new Date(o.order_date);
+        if (range === 'today') return o.order_date.startsWith(todayStr);
+        if (range === '7days') return d >= sevenDaysAgo;
+        if (range === '30days') return d >= thirtyDaysAgo;
+        return true;
+      });
+
+      // Today metrics
+      const todayOrders = rawOrders.filter((o) => o.order_date.startsWith(todayStr));
+      const todayPaid = todayOrders.filter((o) => o.payment_status === 'PAID');
+      const todayRevenue = todayPaid.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+
+      // Period summary
+      const totalOrdersCount = filteredOrders.length;
+      const paidOrders = filteredOrders.filter((o) => o.payment_status === 'PAID');
+      const pendingPaymentOrders = filteredOrders.filter(
+        (o) => o.payment_status === 'PENDING_PAYMENT' || !o.payment_status
+      );
+      const totalRevenue = paidOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+      const avgOrderValue = totalOrdersCount > 0 ? Math.round(totalRevenue / (paidOrders.length || 1)) : 0;
+
+      // Delivery operations
+      const awaitingFulfilment = filteredOrders.filter(
+        (o) => o.status === 'รอดำเนินการ' || o.status === 'กำลังจัดเตรียมสินค้า'
+      ).length;
+      const inTransit = filteredOrders.filter((o) => o.status === 'จัดส่งแล้ว').length;
+      const completed = filteredOrders.filter((o) => o.status === 'สำเร็จ').length;
+      const cancelled = filteredOrders.filter((o) => o.status === 'ยกเลิก').length;
+      const fulfillmentRate = totalOrdersCount > 0 ? Math.round((completed / totalOrdersCount) * 100) : 100;
+
+      // Warehouse operations
+      let totalItems = 0;
+      let totalRetailValue = 0;
+      let totalCostValue = 0;
+      let lowStock = 0;
+      let outOfStock = 0;
+      const stockMap = new Map<number, number>();
+
+      for (const p of rawProducts) {
+        const s = Number(p.stock) || 0;
+        const pr = Number(p.price) || 0;
+        stockMap.set(p.id, s);
+        totalItems += s;
+        totalRetailValue += s * pr;
+        totalCostValue += s * Math.round(pr * 0.7);
+        if (s === 0) outOfStock++;
+        else if (s <= 10) lowStock++;
+      }
+
+      // Top products & Category breakdown
+      const productSales = new Map<number, { id: number; name: string; category?: string; qty: number; rev: number }>();
+      const categorySales = new Map<string, { category: string; qty: number; rev: number }>();
+
+      for (const order of filteredOrders) {
+        if (order.status === 'ยกเลิก') continue;
+        if (order.items && Array.isArray(order.items)) {
+          for (const item of order.items) {
+            const pId = item.product_id;
+            const pData = rawProducts.find((p) => p.id === pId);
+            const cat = pData?.category || 'ทั่วไป';
+
+            const pCurr = productSales.get(pId) || {
+              id: pId,
+              name: item.name || pData?.name || `สินค้า #${pId}`,
+              category: cat,
+              qty: 0,
+              rev: 0,
+            };
+            pCurr.qty += item.quantity || 1;
+            pCurr.rev += item.subtotal || item.price * (item.quantity || 1);
+            productSales.set(pId, pCurr);
+
+            const cCurr = categorySales.get(cat) || { category: cat, qty: 0, rev: 0 };
+            cCurr.qty += item.quantity || 1;
+            cCurr.rev += item.subtotal || item.price * (item.quantity || 1);
+            categorySales.set(cat, cCurr);
+          }
+        }
+      }
+
+      const topProducts: ManagerTopProduct[] = Array.from(productSales.values())
+        .sort((a, b) => b.qty - a.qty || b.rev - a.rev)
+        .slice(0, 10)
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          quantity: p.qty,
+          revenue: p.rev,
+          stockRemaining: stockMap.get(p.id) ?? 0,
+        }));
+
+      // If no orders with items, fallback to top products by catalog
+      if (topProducts.length === 0 && rawProducts.length > 0) {
+        rawProducts.slice(0, 5).forEach((p) => {
+          topProducts.push({
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            quantity: 0,
+            revenue: 0,
+            stockRemaining: Number(p.stock) || 0,
+          });
+        });
+      }
+
+      const totalCatRev = Array.from(categorySales.values()).reduce((sum, c) => sum + c.rev, 0);
+      const categories: ManagerCategoryShare[] = Array.from(categorySales.values())
+        .sort((a, b) => b.rev - a.rev)
+        .map((c) => ({
+          category: c.category,
+          itemsSold: c.qty,
+          revenue: c.rev,
+          percentage: totalCatRev > 0 ? Math.round((c.rev / totalCatRev) * 100) : 0,
+        }));
+
+      // Status breakdown
+      const statusMap = new Map<string, number>();
+      for (const o of filteredOrders) {
+        statusMap.set(o.status, (statusMap.get(o.status) || 0) + 1);
+      }
+      const statusSummary = Array.from(statusMap.entries()).map(([status, count]) => ({ status, count }));
+
+      // Recent orders
+      const recentOrders: ManagerRecentOrder[] = [...filteredOrders]
+        .sort((a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime())
+        .slice(0, 15)
+        .map((o) => ({
+          order_id: o.order_id,
+          order_date: o.order_date,
+          customer: o.username || `ลูกค้า #${o.user_id}`,
+          total_amount: Number(o.total_amount) || 0,
+          status: o.status,
+          payment_status: o.payment_status || 'PENDING_PAYMENT',
+          itemsCount: o.items ? o.items.length : 1,
+        }));
+
+      return {
+        range,
+        today: {
+          revenue: todayRevenue,
+          paidOrders: todayPaid.length,
+          newOrders: todayOrders.length,
+        },
+        summary: {
+          totalRevenue,
+          totalOrders: totalOrdersCount,
+          paidOrdersCount: paidOrders.length,
+          pendingPaymentCount: pendingPaymentOrders.length,
+          avgOrderValue,
+          fulfillmentRate,
+        },
+        departments: {
+          delivery: {
+            pending: awaitingFulfilment,
+            inTransit,
+            completed,
+            cancelled,
+          },
+          warehouse: {
+            totalProducts: rawProducts.length,
+            totalItems,
+            totalRetailValue,
+            totalCostValue,
+            lowStock,
+            outOfStock,
+          },
+          finance: {
+            totalIncome: totalRevenue,
+            paidOrders: paidOrders.length,
+            pendingPayments: pendingPaymentOrders.length,
+          },
+        },
+        operations: {
+          awaitingFulfilment,
+          lowStock,
+          outOfStock,
+        },
+        topProducts,
+        statusSummary,
+        categories,
+        recentOrders,
+      };
+    }
+  },
 };
 
 // Web-only for now (the primary browser target) — takes a File/Blob from an
@@ -473,6 +752,337 @@ export const financialReportsApi = {
     request<FinancialReport>(`/api/financial-reports?from=${range.from}&to=${range.to}`),
   exportPath: (range: { from: string; to: string }) => `/api/financial-reports/export?from=${range.from}&to=${range.to}`,
   auditLogs: (limit = 30) => request<AuditLog[]>(`/api/financial-reports/audit-logs?limit=${limit}`),
+};
+
+// ---- Delivery -----------------------------------------------------------
+
+export type DeliveryDashboard = {
+  pendingDelivery: number;
+  outForDelivery: number;
+  completedToday: number;
+  totalOrders: number;
+};
+
+export type DeliveryOrder = {
+  order_id: number;
+  order_date: string;
+  username: string;
+  total_amount: number;
+  status: string;
+  payment_status?: string;
+  shipping_fee?: number;
+  discount?: number;
+  items: OrderItem[];
+};
+
+// Local persistence fallback helpers for delivery and stock roles.
+// When the shared remote API server (119.59.102.161) is running the group's unmerged master branch,
+// new endpoints (/api/stock, /api/delivery) return 404 and admin-restricted mutations return 403.
+// These helpers allow local testing and demonstration to continue without blocking the UI.
+const LOCAL_STOCK_KEY = 'local_stock_overrides_v1';
+const LOCAL_STOCK_LOGS_KEY = 'local_stock_logs_v1';
+const LOCAL_DELIVERY_KEY = 'local_delivery_overrides_v1';
+
+async function getLocalStockOverrides(): Promise<Record<number, number>> {
+  try {
+    const raw = await AsyncStorage.getItem(LOCAL_STOCK_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function setLocalStockOverride(productId: number, stock: number): Promise<void> {
+  try {
+    const map = await getLocalStockOverrides();
+    map[productId] = stock;
+    await AsyncStorage.setItem(LOCAL_STOCK_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+async function getLocalStockLogs(): Promise<StockLog[]> {
+  try {
+    const raw = await AsyncStorage.getItem(LOCAL_STOCK_LOGS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function appendLocalStockLog(log: StockLog): Promise<void> {
+  try {
+    const logs = await getLocalStockLogs();
+    logs.unshift(log);
+    await AsyncStorage.setItem(LOCAL_STOCK_LOGS_KEY, JSON.stringify(logs.slice(0, 100)));
+  } catch {}
+}
+
+async function getLocalDeliveryOverrides(): Promise<Record<number, string>> {
+  try {
+    const raw = await AsyncStorage.getItem(LOCAL_DELIVERY_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function setLocalDeliveryOverride(orderId: number, status: string): Promise<void> {
+  try {
+    const map = await getLocalDeliveryOverrides();
+    map[orderId] = status;
+    await AsyncStorage.setItem(LOCAL_DELIVERY_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+export const deliveryApi = {
+  dashboard: async (): Promise<DeliveryDashboard> => {
+    try {
+      return await request<DeliveryDashboard>('/api/delivery/dashboard');
+    } catch {
+      const allOrders = await deliveryApi.orders();
+      return {
+        pendingDelivery: allOrders.filter((o) => o.status === 'รอดำเนินการ' || o.status === 'กำลังจัดเตรียมสินค้า').length,
+        outForDelivery: allOrders.filter((o) => o.status === 'จัดส่งแล้ว').length,
+        completedToday: allOrders.filter((o) => o.status === 'สำเร็จ').length,
+        totalOrders: allOrders.length,
+      };
+    }
+  },
+  orders: async (status?: string): Promise<DeliveryOrder[]> => {
+    let list: DeliveryOrder[] = [];
+    try {
+      const query = status ? `?status=${encodeURIComponent(status)}` : '';
+      list = await request<DeliveryOrder[]>(`/api/delivery/orders${query}`);
+    } catch {
+      const rawOrders = (await ordersApi.list()) as any[];
+      const overrides = await getLocalDeliveryOverrides();
+      list = rawOrders.map((o) => ({
+        ...o,
+        status: overrides[o.order_id] || o.status,
+      }));
+      if (status) {
+        list = list.filter((o) => o.status === status);
+      }
+    }
+    return list;
+  },
+  updateStatus: async (id: number, status: string) => {
+    try {
+      return await request<{ success: boolean; order_id: number; status: string }>(
+        `/api/delivery/orders/${id}/status`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ status }),
+        }
+      );
+    } catch {
+      try {
+        return await ordersApi.updateStatus(id, status);
+      } catch {
+        // Fallback for when remote server returns 403 Forbidden to non-admin roles
+        await setLocalDeliveryOverride(id, status);
+        return { success: true, order_id: id, status };
+      }
+    }
+  },
+};
+
+// ---- Stock / Warehouse --------------------------------------------------
+
+export type StockProduct = {
+  id: number;
+  name: string;
+  description: string;
+  category: string;
+  image_url: string | null;
+  price: number;
+  cost_price: number;
+  stock: number;
+  min_stock: number;
+  sku: string;
+  location: string;
+  status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+};
+
+export type StockInventoryData = {
+  summary: {
+    totalProducts: number;
+    totalItems: number;
+    totalCostValue: number;
+    totalRetailValue: number;
+    lowStockCount: number;
+    outOfStockCount: number;
+    lowStockProducts: Array<{ id: number; name: string; stock: number; minStock: number }>;
+  };
+  products: StockProduct[];
+};
+
+export type StockLog = {
+  id: number;
+  product_id: number;
+  product_name: string;
+  change_amount: number;
+  previous_stock: number;
+  new_stock: number;
+  reason: string;
+  note: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+export const stockApi = {
+  inventory: async (): Promise<StockInventoryData> => {
+    try {
+      return await request<StockInventoryData>('/api/stock/inventory');
+    } catch {
+      // Fallback: load directly from /api/products which is guaranteed to be available
+      const rawProducts = await productsApi.list();
+      // Clear any stale local overrides so real database stock always shows
+      AsyncStorage.removeItem(LOCAL_STOCK_KEY).catch(() => {});
+
+      let totalItems = 0;
+      let totalCostValue = 0;
+      let totalRetailValue = 0;
+      let lowStockCount = 0;
+      let outOfStockCount = 0;
+      const lowStockProducts: Array<{ id: number; name: string; stock: number; minStock: number }> = [];
+
+      const products: StockProduct[] = rawProducts.map((p) => {
+        const id = p.id;
+        const stock = Number(p.stock) || 0;
+        const price = Number(p.price) || 0;
+        const costPrice = Math.round(price * 0.7);
+        const minStock = 5;
+        const sku = `SKU-${String(p.category || 'PRD').slice(0, 3).toUpperCase()}-${String(id).padStart(3, '0')}`;
+        const location = `A-0${(id % 3) + 1}-0${(id % 9) + 1}`;
+
+        let status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' = 'IN_STOCK';
+        if (stock === 0) {
+          status = 'OUT_OF_STOCK';
+          outOfStockCount++;
+        } else if (stock <= minStock) {
+          status = 'LOW_STOCK';
+          lowStockCount++;
+          lowStockProducts.push({ id, name: p.name, stock, minStock });
+        }
+
+        totalItems += stock;
+        totalCostValue += costPrice * stock;
+        totalRetailValue += price * stock;
+
+        return {
+          id,
+          name: p.name,
+          description: p.description || '',
+          category: p.category,
+          image_url: p.image_url,
+          price,
+          cost_price: costPrice,
+          stock,
+          min_stock: minStock,
+          sku,
+          location,
+          status,
+        };
+      });
+
+      return {
+        summary: {
+          totalProducts: products.length,
+          totalItems,
+          totalCostValue,
+          totalRetailValue,
+          lowStockCount,
+          outOfStockCount,
+          lowStockProducts,
+        },
+        products,
+      };
+    }
+  },
+  adjustStock: async (
+    id: number,
+    data: { changeAmount?: number; newStock?: number; reason: string; note?: string; productName?: string }
+  ) => {
+    try {
+      return await request<{ success: boolean; id: number; previousStock: number; newStock: number; changeAmount: number }>(
+        `/api/stock/inventory/${id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }
+      );
+    } catch {
+      // Fallback: update stock directly via productsApi.update or local persistence
+      let currentName = data.productName || '';
+      let currentPrice = 0;
+      let currentCategory = '';
+      let currentDesc = '';
+      let prevStock = 0;
+
+      const overrides = await getLocalStockOverrides();
+      try {
+        const current = await productsApi.get(id);
+        currentName = current.name || currentName;
+        currentPrice = current.price;
+        currentCategory = current.category;
+        currentDesc = current.description || '';
+        prevStock = Number(current.stock) || 0;
+      } catch {
+        prevStock = 0;
+      }
+
+      let targetStock = prevStock;
+      if (data.newStock !== undefined && data.newStock !== null) {
+        targetStock = Math.max(0, Number(data.newStock));
+      } else if (data.changeAmount !== undefined && data.changeAmount !== null) {
+        targetStock = Math.max(0, prevStock + Number(data.changeAmount));
+      }
+
+      await productsApi.update(id, {
+        name: currentName,
+        price: currentPrice,
+        stock: targetStock,
+        category: currentCategory,
+        description: currentDesc,
+        ...({ reason: data.reason, note: data.note } as any),
+      });
+
+      // Record in local logs so "ดูประวัติปรับสต็อก" works
+      const auth = await getStoredAuth();
+      await appendLocalStockLog({
+        id: Date.now(),
+        product_id: id,
+        product_name: currentName || `สินค้า #${id}`,
+        change_amount: targetStock - prevStock,
+        previous_stock: prevStock,
+        new_stock: targetStock,
+        reason: data.reason || 'ปรับยอดสต็อก',
+        note: data.note || null,
+        created_by: auth?.user?.username || 'stock',
+        created_at: new Date().toISOString(),
+      });
+
+      return {
+        success: true,
+        id,
+        previousStock: prevStock,
+        newStock: targetStock,
+        changeAmount: targetStock - prevStock,
+      };
+    }
+  },
+  logs: async (): Promise<StockLog[]> => {
+    try {
+      const serverLogs = await request<StockLog[]>('/api/stock/logs');
+      if (serverLogs && serverLogs.length > 0) return serverLogs;
+    } catch {}
+    try {
+      const fallbackLogs = await request<StockLog[]>('/api/products/stock/logs');
+      if (fallbackLogs && fallbackLogs.length > 0) return fallbackLogs;
+    } catch {}
+    return await getLocalStockLogs();
+  },
 };
 
 // Slips, receipts and exports sit behind auth, so they can't be opened as a

@@ -93,6 +93,23 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// GET /api/products/stock/logs — stock adjustment logs fallback
+router.get('/stock/logs', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT sl.id, sl.product_id, sl.change_amount, sl.previous_stock, sl.new_stock,
+             sl.reason, sl.note, sl.created_by, sl.created_at, i.name AS product_name
+      FROM Stock_Logs sl
+      LEFT JOIN Inventory i ON i.id = sl.product_id
+      ORDER BY sl.created_at DESC
+      LIMIT 100
+    `);
+    res.json(rows);
+  } catch {
+    res.json([]);
+  }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -133,7 +150,7 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
 });
 
 // ===== แก้ไข (Edit / Update) =====
-router.put('/:id', requireRole('admin'), async (req, res, next) => {
+router.put('/:id', requireRole('admin', 'stock'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid product id' });
@@ -141,12 +158,36 @@ router.put('/:id', requireRole('admin'), async (req, res, next) => {
     const { errors, data } = validateProductInput(req.body);
     if (errors.length) return res.status(400).json({ error: errors.join(', ') });
 
+    // Fetch previous stock before update
+    let prevStock = null;
+    try {
+      const [prevRows] = await pool.execute('SELECT stock FROM Inventory WHERE id = ?', [id]);
+      if (prevRows[0]) prevStock = Number(prevRows[0].stock);
+    } catch {}
+
     const [result] = await pool.execute(
       'UPDATE Inventory SET name = ?, price = ?, stock = ?, category = ?, image_url = ?, description = ? WHERE id = ?',
       [data.name, data.price, data.stock, data.category, data.image_url, data.description, id]
     );
 
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Product not found' });
+
+    // Record adjustment to Stock_Logs if stock changed
+    if (prevStock !== null && prevStock !== Number(data.stock)) {
+      const newStock = Number(data.stock);
+      const delta = newStock - prevStock;
+      const reason = req.body?.reason || (delta > 0 ? 'รับสินค้าเข้าคลัง (PO Inbound)' : 'ตัดจ่าย/เบิกออกคลัง');
+      const note = req.body?.note || null;
+      try {
+        await pool.execute(
+          `INSERT INTO Stock_Logs (product_id, change_amount, previous_stock, new_stock, reason, note, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [id, delta, prevStock, newStock, reason, note, req.user?.username || 'stock']
+        );
+      } catch (logErr) {
+        // Table might not exist yet; ignore safely
+      }
+    }
 
     const [rows] = await pool.execute(`SELECT ${SELECT_COLUMNS} FROM Inventory WHERE id = ?`, [id]);
     res.json(rows[0]);

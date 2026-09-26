@@ -30,6 +30,7 @@ const STAT_TILES: Array<{
 
 export default function DashboardScreen() {
   const { user } = useAuth();
+  const role = (user?.role || '').trim().toLowerCase();
   const theme = useTheme();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,6 +38,7 @@ export default function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (role !== 'admin') return;
     setError(null);
     try {
       const data = await dashboardApi.stats();
@@ -44,15 +46,19 @@ export default function DashboardScreen() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load dashboard');
     }
-  }, []);
+  }, [role]);
 
   useEffect(() => {
+    if (role !== 'admin') {
+      setIsLoading(false);
+      return;
+    }
     (async () => {
       setIsLoading(true);
       await load();
       setIsLoading(false);
     })();
-  }, [load]);
+  }, [load, role]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);

@@ -21,6 +21,9 @@ const paymentsRoutes = require('./backend/routes/payments.routes');
 const refundsRoutes = require('./backend/routes/refunds.routes');
 const expensesRoutes = require('./backend/routes/expenses.routes');
 const financialReportsRoutes = require('./backend/routes/financial-reports.routes');
+const managerRoutes = require('./backend/routes/manager.routes');
+const deliveryRoutes = require('./backend/routes/delivery.routes');
+const stockRoutes = require('./backend/routes/stock.routes');
 
 const app = express();
 const port = process.env.PORT || 3079;
@@ -57,6 +60,9 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/refunds', refundsRoutes);
 app.use('/api/expenses', expensesRoutes);
 app.use('/api/financial-reports', financialReportsRoutes);
+app.use('/api/manager', managerRoutes);
+app.use('/api/delivery', deliveryRoutes);
+app.use('/api/stock', stockRoutes);
 
 // Legacy endpoint kept for backwards compatibility with the original server.js.
 // It now requires auth (it used to be public), because it returns the same real
