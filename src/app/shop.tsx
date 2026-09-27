@@ -70,18 +70,22 @@ function ShopScreenContent() {
     }
   }, []);
 
-  useEffect(() => {
-    loadCategories();
-  }, [loadCategories]);
+  const role = (user?.role || '').trim().toLowerCase();
 
   useEffect(() => {
+    if (role !== 'user') return;
+    loadCategories();
+  }, [loadCategories, role]);
+
+  useEffect(() => {
+    if (role !== 'user') return;
     setIsLoading(true);
     const timeout = setTimeout(async () => {
       await loadProducts(search, activeCategory);
       setIsLoading(false);
     }, 300);
     return () => clearTimeout(timeout);
-  }, [search, activeCategory, loadProducts]);
+  }, [search, activeCategory, loadProducts, role]);
 
   const chips = useMemo(() => ['All', ...categories], [categories]);
   const numColumns = width >= 900 ? 4 : width >= 640 ? 3 : 2;

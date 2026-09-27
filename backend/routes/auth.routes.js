@@ -38,15 +38,16 @@ router.post('/login', async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
+    const normalizedRole = (user.role || '').trim().toLowerCase();
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user.id, username: user.username, role: normalizedRole },
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     );
 
     return res.json({
       token,
-      user: { id: user.id, username: user.username, role: user.role },
+      user: { id: user.id, username: user.username, role: normalizedRole },
     });
   } catch (err) {
     return next(err);

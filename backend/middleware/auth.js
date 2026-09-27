@@ -25,8 +25,10 @@ function requireAuth(req, res, next) {
 // the client/body; only the role embedded in the signed token counts.
 // Usage: router.post('/', requireAuth, requireRole('admin'), handler)
 function requireRole(...allowedRoles) {
+  const normalizedAllowed = allowedRoles.map((r) => String(r).trim().toLowerCase());
   return function (req, res, next) {
-    if (!req.user || !allowedRoles.includes(req.user.role)) {
+    const userRole = (req.user && req.user.role ? String(req.user.role) : '').trim().toLowerCase();
+    if (!req.user || !normalizedAllowed.includes(userRole)) {
       return res.status(403).json({ error: 'Forbidden — you do not have permission to do this' });
     }
     return next();

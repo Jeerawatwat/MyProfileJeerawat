@@ -5,7 +5,7 @@
 -- deleted, and every existing order keeps its current `status`.
 --
 -- What this does:
---   1. Adds the 'accounting' role to Users.role and seeds one accounting login
+--   1. Adds the 'accounting' and 'manager' roles to Users.role and seeds one accounting login
 --      (username `accounting`, password `accounting123` — change it after the
 --      first login by UPDATE-ing the row with a fresh bcrypt hash).
 --   2. Adds money fields to Orders:
@@ -31,7 +31,7 @@
 
 -- 1) Accounting role -------------------------------------------------------
 ALTER TABLE `Users`
-  MODIFY `role` ENUM('admin','user','accounting') NOT NULL DEFAULT 'user';
+  MODIFY `role` ENUM('admin','user','accounting','manager') NOT NULL DEFAULT 'user';
 
 INSERT IGNORE INTO `Users` (`username`, `password`, `role`)
 VALUES ('accounting', '$2a$10$MgdcoZx.Zpart122GNHsX.eCgQj50nilEygd.3QGSdjG6ZpQqxa7S', 'accounting');

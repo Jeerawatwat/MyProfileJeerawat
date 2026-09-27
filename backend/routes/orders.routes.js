@@ -20,9 +20,9 @@ const CANCELLED_STATUS = 'ยกเลิก';
 // money (Orders.payment_status = 'PAID', see sql/005_accounting_finance.sql).
 const REQUIRES_PAYMENT_STATUSES = ['กำลังจัดเตรียมสินค้า', 'จัดส่งแล้ว', 'สำเร็จ'];
 
-// Roles that may read every order. Accounting reads them for financial
-// checking only — it has no write route in this file.
-const ALL_ORDERS_ROLES = ['admin', 'accounting'];
+// Roles that may read every order. Accounting and manager read them for financial/management
+// checking; delivery reads them for fulfilment and shipping operations.
+const ALL_ORDERS_ROLES = ['admin', 'accounting', 'delivery', 'manager'];
 
 router.use(requireAuth);
 
@@ -259,7 +259,8 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// PATCH /api/orders/:id/status — admin only.
+// PATCH /api/orders/:id/status — admin and delivery.
+// Delivery staff updates fulfilment to 'จัดส่งแล้ว' and 'สำเร็จ'.
 // Cancelling an order (-> 'ยกเลิก') gives every item's quantity back to
 // Inventory.stock in the same transaction as the status change, and requires
 // a reason (stored on Orders.cancel_reason so the buyer can see why). Moving
@@ -267,7 +268,7 @@ router.get('/:id', async (req, res, next) => {
 // stock, and is blocked (409) if that stock was sold to someone else in the
 // meantime. A normal transition between the other statuses never touches
 // stock at all.
-router.patch('/:id/status', requireRole('admin'), async (req, res, next) => {
+router.patch('/:id/status', requireRole('admin', 'delivery'), async (req, res, next) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'รหัสคำสั่งซื้อไม่ถูกต้อง' });
 

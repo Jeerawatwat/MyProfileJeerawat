@@ -1,44 +1,93 @@
 // src/components/role-guard.tsx
-// Frontend route guards — the UX layer of role separation. If a "user" role
-// types an Admin URL directly into the browser's address bar (web), this
-// redirects them away before the screen renders anything. The real security
-// boundary is server-side (every mutating/admin API route checks the JWT's
-// role — see backend/middleware/auth.js's requireRole) — this component only
-// stops a signed-in user from *seeing* a screen they have no business on; it
-// is not what keeps their data safe.
-import { Redirect } from 'expo-router';
-import type { ReactNode } from 'react';
+// Frontend route guards — the UX layer of role separation.
+// Uses router.replace in a safe useEffect hook to prevent infinite redirect loops
+// in React 19 / Expo Router.
+import { usePathname, useRouter } from 'expo-router';
+import { useEffect, useRef, type ReactNode } from 'react';
 
 import { useAuth } from '@/context/auth-context';
 
 // Where each role lands when it hits a screen that isn't theirs.
-function homeFor(role: string) {
-  if (role === 'admin') return '/' as const;
-  if (role === 'accounting') return '/accounting' as const;
+export function homeFor(role?: string | null) {
+  const r = (role || '').trim().toLowerCase();
+  if (r === 'admin') return '/' as const;
+  if (r === 'accounting') return '/accounting' as const;
+  if (r === 'manager') return '/manager/dashboard' as const;
+  if (r === 'delivery') return '/delivery/orders' as const;
+  if (r === 'stock') return '/stock/inventory' as const;
   return '/shop' as const;
+}
+
+function useRoleRedirect(isAllowed: boolean) {
+  const { user } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const redirectedRef = useRef(false);
+
+  const role = (user?.role || '').trim().toLowerCase();
+  const target = homeFor(role);
+
+  useEffect(() => {
+    if (!user || isAllowed || redirectedRef.current) return;
+    if (pathname !== target) {
+      redirectedRef.current = true;
+      router.replace(target);
+    }
+  }, [user, isAllowed, pathname, target, router]);
+
+  return { isAllowed: !!user && isAllowed };
 }
 
 export function RequireAdmin({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  // AuthGate above this in the tree already guarantees `user` is set before
-  // any tab screen mounts, but we guard defensively anyway.
-  if (!user) return null;
-  if (user.role !== 'admin') return <Redirect href={homeFor(user.role)} />;
+  const role = (user?.role || '').trim().toLowerCase();
+  const { isAllowed } = useRoleRedirect(role === 'admin');
+
+  if (!isAllowed) return null;
   return <>{children}</>;
 }
 
 export function RequireUser({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  if (!user) return null;
-  // Admins (and accounting) aren't routed into User-only screens — they land
-  // on their own home instead, keeping "which app am I in" unambiguous.
-  if (user.role !== 'user') return <Redirect href={homeFor(user.role)} />;
+  const role = (user?.role || '').trim().toLowerCase();
+  const { isAllowed } = useRoleRedirect(role === 'user');
+
+  if (!isAllowed) return null;
   return <>{children}</>;
 }
 
 export function RequireAccounting({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  if (!user) return null;
-  if (user.role !== 'accounting') return <Redirect href={homeFor(user.role)} />;
+  const role = (user?.role || '').trim().toLowerCase();
+  const { isAllowed } = useRoleRedirect(role === 'accounting');
+
+  if (!isAllowed) return null;
+  return <>{children}</>;
+}
+
+export function RequireManager({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const role = (user?.role || '').trim().toLowerCase();
+  const { isAllowed } = useRoleRedirect(role === 'manager');
+
+  if (!isAllowed) return null;
+  return <>{children}</>;
+}
+
+export function RequireDelivery({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const role = (user?.role || '').trim().toLowerCase();
+  const { isAllowed } = useRoleRedirect(role === 'delivery');
+
+  if (!isAllowed) return null;
+  return <>{children}</>;
+}
+
+export function RequireStock({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const role = (user?.role || '').trim().toLowerCase();
+  const { isAllowed } = useRoleRedirect(role === 'stock' || role === 'admin');
+
+  if (!isAllowed) return null;
   return <>{children}</>;
 }

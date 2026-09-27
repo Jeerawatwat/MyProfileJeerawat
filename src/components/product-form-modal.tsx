@@ -159,7 +159,6 @@ export function ProductFormModal({
                 // simplest cross-browser way to pick a file without a native module.
                 // Only ever rendered on web (guarded above), so the "input" host
                 // element — not part of React Native's JSX types — is safe at runtime.
-                // @ts-expect-error - web-only intrinsic DOM element
                 <input
                   ref={fileInputRef}
                   type="file"
