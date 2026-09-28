@@ -8,7 +8,7 @@ import { StyleSheet, View } from 'react-native';
 import { ThemedText } from './themed-text';
 
 import { Spacing } from '@/constants/theme';
-import { PAYMENT_STATUS_LABELS, REFUND_STATUS_LABELS } from '@/lib/api';
+import { CLAIM_STATUS_LABELS, PAYMENT_STATUS_LABELS, REFUND_STATUS_LABELS } from '@/lib/api';
 
 const TONES = {
   pending: { bg: '#96700A26', fg: '#96700A' },
@@ -33,6 +33,16 @@ const REFUND_TONE: Record<string, keyof typeof TONES> = {
   REFUNDED: 'success',
 };
 
+const CLAIM_TONE: Record<string, keyof typeof TONES> = {
+  PENDING_REVIEW: 'pending',
+  INSPECTING: 'review',
+  APPROVED: 'neutral',
+  REJECTED: 'danger',
+  REPAIRING: 'review',
+  SHIPPING_REPLACEMENT: 'review',
+  COMPLETED: 'success',
+};
+
 function Pill({ label, tone }: { label: string; tone: keyof typeof TONES }) {
   const style = TONES[tone];
   return (
@@ -50,6 +60,10 @@ export function PaymentStatusBadge({ status }: { status: string }) {
 
 export function RefundStatusBadge({ status }: { status: string }) {
   return <Pill label={REFUND_STATUS_LABELS[status] ?? status} tone={REFUND_TONE[status] ?? 'pending'} />;
+}
+
+export function ClaimStatusBadge({ status }: { status: string }) {
+  return <Pill label={CLAIM_STATUS_LABELS[status] ?? status} tone={CLAIM_TONE[status] ?? 'pending'} />;
 }
 
 const styles = StyleSheet.create({

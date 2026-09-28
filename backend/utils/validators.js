@@ -45,6 +45,39 @@ function validateProductInput(body, { partial = false } = {}) {
     data.description = raw || null;
   }
 
+  // ---- Warranty claim fields (sql/009_product_claims.sql) ----
+  if (!partial || body.model !== undefined) {
+    // Optional "รุ่นสินค้า" shown on the claim form/PDF — distinct from the
+    // free-text product name (e.g. name "Bluetooth Speaker X1", model "X1").
+    const raw = typeof body.model === 'string' ? body.model.trim() : '';
+    if (raw.length > 120) errors.push('Model must be 120 characters or fewer');
+    data.model = raw || null;
+  }
+
+  if (!partial || body.warranty_months !== undefined) {
+    // Only affects units sold AFTER this is set (see productUnits.js) —
+    // never rewrites the warranty on units already assigned to an order.
+    const raw = body.warranty_months;
+    const months = raw === undefined || raw === null || raw === '' ? 12 : Number(raw);
+    if (!Number.isInteger(months) || months < 0 || months > 120) {
+      errors.push('Warranty months must be a whole number from 0 to 120');
+    }
+    data.warranty_months = Number.isInteger(months) ? months : 12;
+  }
+
+  if (!partial || body.serial_prefix !== undefined) {
+    // Optional — leave blank to auto-generate one from the product id
+    // instead (see defaultPrefix() in productUnits.js). When set, it must be
+    // short, uppercase letters/digits only, and unique across products (the
+    // route checks uniqueness; Inventory.uq_inventory_serial_prefix backs it
+    // up at the DB level too).
+    const raw = typeof body.serial_prefix === 'string' ? body.serial_prefix.trim().toUpperCase() : '';
+    if (raw && !/^[A-Z0-9]{2,10}$/.test(raw)) {
+      errors.push('Serial prefix must be 2-10 letters/digits (A-Z, 0-9)');
+    }
+    data.serial_prefix = raw || null;
+  }
+
   return { errors, data };
 }
 

@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AmbientGlow } from '@/components/ambient-glow';
 import { EmptyState } from '@/components/empty-state';
 import { ProductDetailSheet } from '@/components/product-detail-sheet';
 import { RequireUser } from '@/components/role-guard';
@@ -113,6 +114,7 @@ function ShopScreenContent() {
 
   return (
     <ThemedView style={styles.container}>
+      <AmbientGlow />
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
           <View>
@@ -226,6 +228,7 @@ export default function ShopScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    overflow: 'hidden',
   },
   safeArea: {
     flex: 1,

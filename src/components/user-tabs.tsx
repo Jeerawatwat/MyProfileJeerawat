@@ -40,6 +40,14 @@ export default function UserTabs() {
         />
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="claim-tracking">
+        <NativeTabs.Trigger.Label>เคลม</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          src={require('@/assets/images/tabIcons/explore.png')}
+          renderingMode="template"
+        />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="profile">
         <NativeTabs.Trigger.Label>บัญชีของฉัน</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon

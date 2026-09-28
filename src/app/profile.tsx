@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ChatButton } from '@/components/chat-fab';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -53,6 +54,8 @@ export default function ProfileScreen() {
             </ThemedText>
             <ThemeToggle />
           </View>
+
+          <ChatButton />
 
           <Pressable
             style={[styles.logoutButton, { backgroundColor: theme.danger }, isLoggingOut && styles.logoutButtonDisabled]}

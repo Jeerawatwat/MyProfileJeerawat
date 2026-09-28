@@ -27,10 +27,26 @@ const { pool } = require('../config/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { validateProductInput } = require('../utils/validators');
 const { computePriceTiers } = require('../services/priceClustering');
+const { withTransaction, httpError } = require('../utils/transaction');
+const { allocateSerials, releaseSerials } = require('../services/productUnits');
 
 const router = express.Router();
 
-const SELECT_COLUMNS = 'id, name, price, stock, category, image_url, description';
+const SELECT_COLUMNS =
+  'id, name, price, original_price, stock, category, image_url, description, model, warranty_months, serial_prefix';
+
+// serial_prefix is optional but must be unique across products when set —
+// checked in the route (not just left to the DB's UNIQUE KEY) so the error
+// message is one the admin/stock user can actually act on.
+async function assertSerialPrefixAvailable(conn, serialPrefix, excludeId) {
+  if (!serialPrefix) return;
+  const params = excludeId ? [serialPrefix, excludeId] : [serialPrefix];
+  const [rows] = await conn.query(
+    `SELECT id FROM Inventory WHERE serial_prefix = ?${excludeId ? ' AND id <> ?' : ''}`,
+    params
+  );
+  if (rows.length) throw httpError(409, `รหัสนำหน้า Serial "${serialPrefix}" ถูกใช้กับสินค้าอื่นแล้ว`);
+}
 
 router.use(requireAuth);
 
@@ -93,6 +109,60 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// POST /api/products/promotions/randomize — admin only. Re-rolls which
+// products are "on sale". Always restores anything currently discounted
+// first (so re-rolling never stacks a second discount on top of one already
+// applied), then picks a random ~30–60% slice of the active, in-stock
+// catalog and lowers Inventory.price itself by a random 10–35% — a real
+// price cut honored at checkout, not just a badge shown on the shop page.
+router.post('/promotions/randomize', requireRole('admin'), async (req, res, next) => {
+  try {
+    const promoted = await withTransaction(async (conn) => {
+      await conn.query(
+        'UPDATE Inventory SET price = original_price, original_price = NULL WHERE original_price IS NOT NULL'
+      );
+
+      const [candidates] = await conn.query('SELECT id, price FROM Inventory WHERE is_active = 1 AND stock > 0 FOR UPDATE');
+      if (candidates.length === 0) return [];
+
+      const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+      const share = 0.3 + Math.random() * 0.3;
+      const count = Math.max(1, Math.round(shuffled.length * share));
+      const picked = shuffled.slice(0, count);
+
+      const results = [];
+      for (const p of picked) {
+        const discountPercent = 10 + Math.floor(Math.random() * 26); // 10–35%
+        const originalPrice = Number(p.price);
+        const newPrice = Math.max(1, Math.round((originalPrice * (100 - discountPercent)) / 100));
+        await conn.query('UPDATE Inventory SET original_price = ?, price = ? WHERE id = ?', [originalPrice, newPrice, p.id]);
+        results.push({ id: p.id, original_price: originalPrice, price: newPrice, discount_percent: discountPercent });
+      }
+      return results;
+    });
+
+    res.json({ success: true, promoted_count: promoted.length, promoted });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/products/promotions/clear — admin only. Restores every
+// currently-discounted product back to its normal price.
+router.post('/promotions/clear', requireRole('admin'), async (req, res, next) => {
+  try {
+    const restoredCount = await withTransaction(async (conn) => {
+      const [result] = await conn.query(
+        'UPDATE Inventory SET price = original_price, original_price = NULL WHERE original_price IS NOT NULL'
+      );
+      return result.affectedRows;
+    });
+    res.json({ success: true, restored_count: restoredCount });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/products/stock/logs — stock adjustment logs fallback
 router.get('/stock/logs', async (req, res) => {
   try {
@@ -129,20 +199,26 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // ===== เพิ่ม (Add / Create) =====
+// Also mints one Product_Units row (Serial Number) per initial stock unit —
+// sql/009_product_claims.sql / backend/services/productUnits.js — so every
+// physical piece of this product can be identified later for a warranty claim.
 router.post('/', requireRole('admin'), async (req, res, next) => {
   try {
     const { errors, data } = validateProductInput(req.body);
     if (errors.length) return res.status(400).json({ error: errors.join(', ') });
 
-    const [result] = await pool.execute(
-      'INSERT INTO Inventory (name, price, stock, category, image_url, description, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)',
-      [data.name, data.price, data.stock, data.category, data.image_url, data.description]
-    );
+    const productId = await withTransaction(async (conn) => {
+      await assertSerialPrefixAvailable(conn, data.serial_prefix, null);
+      const [result] = await conn.query(
+        `INSERT INTO Inventory (name, price, stock, category, image_url, description, model, warranty_months, serial_prefix, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        [data.name, data.price, data.stock, data.category, data.image_url, data.description, data.model, data.warranty_months, data.serial_prefix]
+      );
+      await allocateSerials(conn, result.insertId, data.stock);
+      return result.insertId;
+    });
 
-    const [rows] = await pool.execute(`SELECT ${SELECT_COLUMNS} FROM Inventory WHERE id = ?`, [
-      result.insertId,
-    ]);
-
+    const [rows] = await pool.execute(`SELECT ${SELECT_COLUMNS} FROM Inventory WHERE id = ?`, [productId]);
     res.status(201).json(rows[0]);
   } catch (err) {
     next(err);
@@ -150,6 +226,16 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
 });
 
 // ===== แก้ไข (Edit / Update) =====
+// Also used by the 'stock' role to adjust stock counts (see role-guard.tsx /
+// stock/inventory.tsx) — every stock change here is logged to Stock_Logs
+// (both this route's own row with a human reason/note, AND
+// sql/008_stock_logs_trigger.sql's DB trigger fires too; that's an existing
+// double-log from the delivery/stock feature, not something this claims work
+// changes). If stock goes UP, this also mints new Serial Numbers for the
+// extra units; if it goes DOWN, it best-effort removes that many still-unsold
+// (IN_STOCK) units — see releaseSerials()'s comment for why a mismatch here
+// is harmless. Everything below runs in one transaction so a partial update
+// (e.g. product row updated but stock log/serials not) can't happen.
 router.put('/:id', requireRole('admin', 'stock'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -158,36 +244,47 @@ router.put('/:id', requireRole('admin', 'stock'), async (req, res, next) => {
     const { errors, data } = validateProductInput(req.body);
     if (errors.length) return res.status(400).json({ error: errors.join(', ') });
 
-    // Fetch previous stock before update
-    let prevStock = null;
-    try {
-      const [prevRows] = await pool.execute('SELECT stock FROM Inventory WHERE id = ?', [id]);
-      if (prevRows[0]) prevStock = Number(prevRows[0].stock);
-    } catch {}
+    const found = await withTransaction(async (conn) => {
+      const [existingRows] = await conn.query('SELECT stock FROM Inventory WHERE id = ? FOR UPDATE', [id]);
+      if (!existingRows[0]) return false;
+      await assertSerialPrefixAvailable(conn, data.serial_prefix, id);
+      const prevStock = Number(existingRows[0].stock);
 
-    const [result] = await pool.execute(
-      'UPDATE Inventory SET name = ?, price = ?, stock = ?, category = ?, image_url = ?, description = ? WHERE id = ?',
-      [data.name, data.price, data.stock, data.category, data.image_url, data.description, id]
-    );
+      // A manual price edit always exits promo state — original_price would
+      // otherwise keep pointing at a now-stale "before" price.
+      await conn.query(
+        `UPDATE Inventory
+         SET name = ?, price = ?, original_price = NULL, stock = ?, category = ?, image_url = ?, description = ?,
+             model = ?, warranty_months = ?, serial_prefix = ?
+         WHERE id = ?`,
+        [data.name, data.price, data.stock, data.category, data.image_url, data.description, data.model, data.warranty_months, data.serial_prefix, id]
+      );
 
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Product not found' });
-
-    // Record adjustment to Stock_Logs if stock changed
-    if (prevStock !== null && prevStock !== Number(data.stock)) {
       const newStock = Number(data.stock);
-      const delta = newStock - prevStock;
-      const reason = req.body?.reason || (delta > 0 ? 'รับสินค้าเข้าคลัง (PO Inbound)' : 'ตัดจ่าย/เบิกออกคลัง');
-      const note = req.body?.note || null;
-      try {
-        await pool.execute(
-          `INSERT INTO Stock_Logs (product_id, change_amount, previous_stock, new_stock, reason, note, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [id, delta, prevStock, newStock, reason, note, req.user?.username || 'stock']
-        );
-      } catch (logErr) {
-        // Table might not exist yet; ignore safely
+      const stockDelta = newStock - prevStock;
+      if (stockDelta > 0) await allocateSerials(conn, id, stockDelta);
+      else if (stockDelta < 0) await releaseSerials(conn, id, -stockDelta);
+
+      // Record adjustment to Stock_Logs if stock changed (the 'stock' role's
+      // own screen sends reason/note; other callers get a generic reason).
+      if (stockDelta !== 0) {
+        const reason = req.body?.reason || (stockDelta > 0 ? 'รับสินค้าเข้าคลัง (PO Inbound)' : 'ตัดจ่าย/เบิกออกคลัง');
+        const note = req.body?.note || null;
+        try {
+          await conn.query(
+            `INSERT INTO Stock_Logs (product_id, change_amount, previous_stock, new_stock, reason, note, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [id, stockDelta, prevStock, newStock, reason, note, req.user?.username || 'stock']
+          );
+        } catch {
+          // Table might not exist yet on a server that hasn't run
+          // sql/007_stock_role_and_inventory.sql — ignore safely.
+        }
       }
-    }
+      return true;
+    });
+
+    if (!found) return res.status(404).json({ error: 'Product not found' });
 
     const [rows] = await pool.execute(`SELECT ${SELECT_COLUMNS} FROM Inventory WHERE id = ?`, [id]);
     res.json(rows[0]);
@@ -240,6 +337,13 @@ router.delete('/:id', requireRole('admin'), async (req, res, next) => {
       }
     }
     await conn.query('DELETE FROM Order_Details WHERE product_id = ?', [id]);
+
+    // Every Product_Units row for this product is safe to remove at this
+    // point too: the paid-order guard above already refused the delete if
+    // any unit here was SOLD as part of a paid order (which is the only kind
+    // a Claim can reference — Claims require a PAID order — so no claim
+    // history is ever orphaned by this).
+    await conn.query('DELETE FROM Product_Units WHERE product_id = ?', [id]);
 
     for (const { order_id } of affectedOrders) {
       const [[{ remaining }]] = await conn.query(

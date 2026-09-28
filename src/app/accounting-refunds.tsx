@@ -15,6 +15,7 @@ import { ReasonDialog } from '@/components/reason-dialog';
 import { RequireAccounting } from '@/components/role-guard';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { TransferSlipDialog } from '@/components/transfer-slip-dialog';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useToast } from '@/context/toast-context';
 import { useTheme } from '@/hooks/use-theme';
@@ -31,7 +32,7 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'ALL', label: 'ทั้งหมด' },
 ];
 
-type PendingAction = { refund: Refund; kind: 'approve' | 'refunded' } | null;
+type PendingAction = { refund: Refund; kind: 'approve' } | null;
 
 function AccountingRefundsContent() {
   const theme = useTheme();
@@ -44,6 +45,7 @@ function AccountingRefundsContent() {
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<Refund | null>(null);
+  const [refundedTarget, setRefundedTarget] = useState<Refund | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -66,13 +68,8 @@ function AccountingRefundsContent() {
     if (!pending) return;
     setBusy(true);
     try {
-      if (pending.kind === 'approve') {
-        await refundsApi.approve(pending.refund.refund_id);
-        showToast(`อนุมัติคืนเงิน REF-${pending.refund.refund_id} แล้ว`);
-      } else {
-        await refundsApi.markRefunded(pending.refund.refund_id);
-        showToast(`บันทึกการโอนคืน REF-${pending.refund.refund_id} แล้ว`);
-      }
+      await refundsApi.approve(pending.refund.refund_id);
+      showToast(`อนุมัติคืนเงิน REF-${pending.refund.refund_id} แล้ว`);
       setPending(null);
       await load();
     } catch (err) {
@@ -95,11 +92,31 @@ function AccountingRefundsContent() {
     }
   };
 
+  const handleMarkRefunded = async (transferSlip: File) => {
+    if (!refundedTarget) return;
+    try {
+      await refundsApi.markRefunded(refundedTarget.refund_id, transferSlip);
+      showToast(`บันทึกการโอนคืน REF-${refundedTarget.refund_id} แล้ว`);
+      setRefundedTarget(null);
+      await load();
+    } catch (err) {
+      return err instanceof ApiError ? err.message : 'บันทึกการโอนคืนไม่สำเร็จ';
+    }
+  };
+
   const viewEvidence = async (id: number) => {
     try {
       await openAuthedFile(refundsApi.evidencePath(id));
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'เปิดหลักฐานไม่สำเร็จ', 'error');
+    }
+  };
+
+  const viewTransferSlip = async (id: number) => {
+    try {
+      await openAuthedFile(refundsApi.transferSlipPath(id));
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'เปิดหลักฐานการโอนไม่สำเร็จ', 'error');
     }
   };
 
@@ -149,6 +166,13 @@ function AccountingRefundsContent() {
                 <View style={[s.noteBox, { borderColor: theme.border }]}>
                   <ThemedText type="small">เหตุผล: {r.reason}</ThemedText>
                 </View>
+                <View style={[s.noteBox, { borderColor: theme.border }]}>
+                  <ThemedText type="smallBold">บัญชีสำหรับโอนเงินคืน</ThemedText>
+                  <ThemedText type="small">
+                    {r.bank_name || '—'} · เลขบัญชี {r.bank_account_number || '—'}
+                  </ThemedText>
+                  <ThemedText type="small">ชื่อบัญชี: {r.bank_account_name || '—'}</ThemedText>
+                </View>
                 {r.status === 'REFUND_REJECTED' && r.rejected_reason ? (
                   <ThemedText type="small" themeColor="danger">
                     เหตุผลที่ปฏิเสธ: {r.rejected_reason}
@@ -165,6 +189,13 @@ function AccountingRefundsContent() {
                   {r.has_evidence ? (
                     <Pressable style={[s.button, { backgroundColor: theme.backgroundElement }]} onPress={() => viewEvidence(r.refund_id)}>
                       <ThemedText type="smallBold">ดูหลักฐาน</ThemedText>
+                    </Pressable>
+                  ) : null}
+                  {r.has_transfer_slip ? (
+                    <Pressable
+                      style={[s.button, { backgroundColor: theme.backgroundElement }]}
+                      onPress={() => viewTransferSlip(r.refund_id)}>
+                      <ThemedText type="smallBold">ดูสลิปการโอนคืน</ThemedText>
                     </Pressable>
                   ) : null}
                   {r.status === 'REFUND_REQUESTED' ? (
@@ -186,7 +217,7 @@ function AccountingRefundsContent() {
                   {r.status === 'REFUND_APPROVED' ? (
                     <Pressable
                       style={[s.button, { backgroundColor: theme.primary }]}
-                      onPress={() => setPending({ refund: r, kind: 'refunded' })}>
+                      onPress={() => setRefundedTarget(r)}>
                       <ThemedText type="smallBold" themeColor="primaryText">
                         บันทึกว่าโอนคืนแล้ว
                       </ThemedText>
@@ -201,12 +232,10 @@ function AccountingRefundsContent() {
 
       <ConfirmDialog
         visible={pending !== null}
-        title={pending?.kind === 'approve' ? 'อนุมัติคืนเงิน?' : 'บันทึกว่าโอนคืนแล้ว?'}
+        title="อนุมัติคืนเงิน?"
         message={
           pending
-            ? pending.kind === 'approve'
-              ? `อนุมัติคืนเงิน ${formatBaht(pending.refund.refund_amount)} ให้ ${pending.refund.username} (Order #${pending.refund.order_id}) ยอดนี้จะถูกหักจากรายรับในรายงานการเงิน`
-              : `ยืนยันว่าได้โอนเงิน ${formatBaht(pending.refund.refund_amount)} คืนให้ ${pending.refund.username} แล้ว`
+            ? `อนุมัติคืนเงิน ${formatBaht(pending.refund.refund_amount)} ให้ ${pending.refund.username} (Order #${pending.refund.order_id}) ยอดนี้จะถูกหักจากรายรับในรายงานการเงิน`
             : ''
         }
         confirmLabel="ยืนยัน"
@@ -223,6 +252,17 @@ function AccountingRefundsContent() {
         confirmLabel="ปฏิเสธ"
         onCancel={() => setRejectTarget(null)}
         onConfirm={handleReject}
+      />
+      <TransferSlipDialog
+        visible={refundedTarget !== null}
+        title={`บันทึกว่าโอนคืนแล้ว REF-${refundedTarget?.refund_id ?? ''}`}
+        message={
+          refundedTarget
+            ? `ยืนยันว่าได้โอนเงิน ${formatBaht(refundedTarget.refund_amount)} คืนให้ ${refundedTarget.username} เข้าบัญชี ${refundedTarget.bank_name || '—'} เลขบัญชี ${refundedTarget.bank_account_number || '—'} แล้ว กรุณาแนบสลิปเป็นหลักฐาน`
+            : ''
+        }
+        onCancel={() => setRefundedTarget(null)}
+        onConfirm={handleMarkRefunded}
       />
     </ThemedView>
   );

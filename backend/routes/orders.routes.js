@@ -11,8 +11,15 @@
 const express = require('express');
 const { pool } = require('../config/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { assignUnitsForOrder } = require('../services/productUnits');
 
 const router = express.Router();
+
+// Statuses at which the shop is considered to have physically handed the
+// order over — the earliest point a real warehouse would actually know which
+// Serial Number went in which box. See services/productUnits.js. Fires
+// regardless of whether admin or delivery triggered the status change below.
+const SERIAL_ASSIGN_STATUSES = ['จัดส่งแล้ว', 'สำเร็จ'];
 
 const ALLOWED_STATUSES = ['รอดำเนินการ', 'กำลังจัดเตรียมสินค้า', 'จัดส่งแล้ว', 'สำเร็จ', 'ยกเลิก'];
 const CANCELLED_STATUS = 'ยกเลิก';
@@ -143,7 +150,7 @@ async function attachOrderDetails(orders) {
   const orderIds = orders.map((o) => o.order_id);
   const placeholders = orderIds.map(() => '?').join(',');
   const [detailRows] = await pool.query(
-    `SELECT od.order_id, od.product_id, od.quantity, od.price, od.subtotal, i.name AS product_name
+    `SELECT od.order_detail_id, od.order_id, od.product_id, od.quantity, od.price, od.subtotal, i.name AS product_name
      FROM Order_Details od
      LEFT JOIN Inventory i ON i.id = od.product_id
      WHERE od.order_id IN (${placeholders})
@@ -154,6 +161,7 @@ async function attachOrderDetails(orders) {
   for (const row of detailRows) {
     if (!byOrder.has(row.order_id)) byOrder.set(row.order_id, []);
     byOrder.get(row.order_id).push({
+      order_detail_id: row.order_detail_id,
       product_id: row.product_id,
       // Falls back to a readable placeholder if the product was later deleted —
       // the order history must never break just because a product no longer exists.
@@ -178,18 +186,50 @@ async function attachOrderDetails(orders) {
   }
 
   const [refundRows] = await pool.query(
-    `SELECT refund_id, order_id, refund_amount, reason, status, rejected_reason, created_at
+    `SELECT refund_id, order_id, refund_amount, reason, status, rejected_reason, created_at,
+            (transfer_slip_path IS NOT NULL) AS has_transfer_slip
      FROM Refunds WHERE order_id IN (${placeholders}) ORDER BY refund_id ASC`,
     orderIds
   );
   const refundsByOrder = new Map();
   for (const r of refundRows) {
     if (!refundsByOrder.has(r.order_id)) refundsByOrder.set(r.order_id, []);
-    refundsByOrder.get(r.order_id).push({ ...r, refund_amount: Number(r.refund_amount) });
+    refundsByOrder
+      .get(r.order_id)
+      .push({ ...r, refund_amount: Number(r.refund_amount), has_transfer_slip: !!Number(r.has_transfer_slip) });
+  }
+
+  // Product warranty claims (sql/009_product_claims.sql) — same "show it on
+  // the order screen without an extra call" treatment as refunds above.
+  const [claimRows] = await pool.query(
+    `SELECT claim_id, order_id, claim_no, status, created_at
+     FROM Claims WHERE order_id IN (${placeholders}) ORDER BY claim_id ASC`,
+    orderIds
+  );
+  const claimsByOrder = new Map();
+  for (const c of claimRows) {
+    if (!claimsByOrder.has(c.order_id)) claimsByOrder.set(c.order_id, []);
+    claimsByOrder.get(c.order_id).push(c);
+  }
+
+  // Serial Numbers assigned to each order_detail line, so the buyer's Orders
+  // screen can offer "แจ้งเคลม" per unit without a separate lookup call. Only
+  // ever populated once the order reached จัดส่งแล้ว/สำเร็จ (see
+  // assignUnitsForOrder in services/productUnits.js) — empty before that.
+  const [unitRows] = await pool.query(
+    `SELECT order_detail_id, serial_no, warranty_expires_at
+     FROM Product_Units WHERE order_id IN (${placeholders}) AND order_detail_id IS NOT NULL`,
+    orderIds
+  );
+  const unitsByDetail = new Map();
+  for (const u of unitRows) {
+    if (!unitsByDetail.has(u.order_detail_id)) unitsByDetail.set(u.order_detail_id, []);
+    unitsByDetail.get(u.order_detail_id).push({ serial_no: u.serial_no, warranty_expires_at: u.warranty_expires_at });
   }
 
   return orders.map((o) => {
-    const items = byOrder.get(o.order_id) || [];
+    const rawItems = byOrder.get(o.order_id) || [];
+    const items = rawItems.map((item) => ({ ...item, units: unitsByDetail.get(item.order_detail_id) || [] }));
     return {
       ...o,
       shipping_fee: Number(o.shipping_fee),
@@ -198,6 +238,7 @@ async function attachOrderDetails(orders) {
       items,
       payment: latestPayment.get(o.order_id) || null,
       refunds: refundsByOrder.get(o.order_id) || [],
+      claims: claimsByOrder.get(o.order_id) || [],
     };
   });
 }
@@ -346,6 +387,16 @@ router.patch('/:id/status', requireRole('admin', 'delivery'), async (req, res, n
       cancelReasonToStore,
       id,
     ]);
+
+    // Once the order is confirmed shipped/completed (and only ever for a PAID
+    // order — same guard as above), give each line item real Serial Numbers
+    // so it can be looked up for a warranty claim later. Idempotent — an
+    // order_detail that already has its units assigned is left alone, so
+    // จัดส่งแล้ว -> สำเร็จ (or clicking the same status twice, by admin or
+    // delivery) is a no-op here.
+    if (SERIAL_ASSIGN_STATUSES.includes(status) && order.payment_status === 'PAID') {
+      await assignUnitsForOrder(conn, id);
+    }
 
     await conn.commit();
     res.json({ success: true, order_id: id, status, cancel_reason: cancelReasonToStore });

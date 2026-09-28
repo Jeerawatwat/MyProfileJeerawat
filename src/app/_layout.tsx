@@ -8,7 +8,6 @@ import AccountingTabs from '@/components/accounting-tabs';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
 import { BrandHeader } from '@/components/brand-header';
-import { ChatFab } from '@/components/chat-fab';
 import { LoginScreen } from '@/components/login-screen';
 import ManagerTabs from '@/components/manager-tabs';
 import { RegisterScreen } from '@/components/register-screen';
@@ -84,7 +83,6 @@ function AuthGate() {
       <ThemedView style={{ flex: 1 }}>
         <BrandHeader />
         <ThemedView style={{ flex: 1 }}>{tabs}</ThemedView>
-        <ChatFab />
       </ThemedView>
     </CartProvider>
   );

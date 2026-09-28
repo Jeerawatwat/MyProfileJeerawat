@@ -42,6 +42,8 @@ export function ProductCard({ product, index = 0, layout = 'grid', onMenu }: Pro
   const isOut = product.stock <= 0;
   const entrance = useSharedValue(0);
   const isList = layout === 'list';
+  const onSale = product.original_price != null && product.original_price > product.price;
+  const discountPercent = onSale ? Math.round((1 - product.price / product.original_price!) * 100) : 0;
 
   useEffect(() => {
     // Small staggered fade+rise on mount — a subtle "the list is alive" touch
@@ -113,8 +115,13 @@ export function ProductCard({ product, index = 0, layout = 'grid', onMenu }: Pro
               </View>
             ) : null}
           </View>
+          {onSale ? (
+            <ThemedText type="small" themeColor="danger" style={styles.saleNote}>
+              🔥 ลด {discountPercent}% จาก {formatBaht(product.original_price!)}
+            </ThemedText>
+          ) : null}
           <View style={styles.footerRow}>
-            <ThemedText type="smallBold" style={styles.price}>
+            <ThemedText type="smallBold" style={[styles.price, onSale && { color: theme.danger }]}>
               {formatBaht(product.price)}
             </ThemedText>
             <StockBadge stock={product.stock} />
@@ -167,14 +174,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(251,248,241,.66)',
+    backgroundColor: 'rgba(20,20,20,.66)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   soldOutPill: {
     paddingVertical: 5,
     paddingHorizontal: 11,
-    backgroundColor: '#1A1A17',
+    backgroundColor: '#141414',
     borderRadius: 9,
   },
   soldOutText: {
@@ -239,5 +246,9 @@ const styles = StyleSheet.create({
   },
   price: {
     fontSize: 15.5,
+  },
+  saleNote: {
+    fontWeight: '700',
+    fontSize: 10.5,
   },
 });

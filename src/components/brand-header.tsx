@@ -25,7 +25,7 @@ export function BrandHeader() {
             contentFit="contain"
           />
           <ThemedText type="smallBold" style={styles.name}>
-            Mee Dood Cha
+            hello test.t
           </ThemedText>
         </View>
       </SafeAreaView>

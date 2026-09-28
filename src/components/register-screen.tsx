@@ -69,11 +69,11 @@ export function RegisterScreen({
               contentFit="contain"
             />
             <ThemedText type="subtitle" style={styles.appName}>
-              Mee Dood Cha
+              hello test.t
             </ThemedText>
           </View>
           <ThemedText type="small" themeColor="textSecondary">
-            สร้างบัญชีเพื่อเริ่มช้อปปิ้งกับ Mee Dood Cha
+            สร้างบัญชีเพื่อเริ่มช้อปปิ้งกับ hello test.t
           </ThemedText>
         </View>
 

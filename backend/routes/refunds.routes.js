@@ -52,7 +52,9 @@ async function findPaidPayment(conn, orderId) {
 }
 
 // POST /api/refunds — buyer requests a refund (multipart/form-data).
-// Fields: order_id, refund_amount, reason, evidence? (image)
+// Fields: order_id, refund_amount, reason, bank_name, bank_account_number,
+// bank_account_name, evidence? (image). Bank details are required so
+// accounting knows exactly where to transfer the money back to.
 router.post('/', requireRole('user'), async (req, res, next) => {
   let evidencePath = null;
   try {
@@ -66,6 +68,15 @@ router.post('/', requireRole('user'), async (req, res, next) => {
     const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
     if (!reason) throw httpError(400, 'กรุณาระบุเหตุผลที่ขอคืนเงิน');
     if (reason.length > 1000) throw httpError(400, 'เหตุผลยาวเกินไป');
+    const bankName = typeof req.body.bank_name === 'string' ? req.body.bank_name.trim() : '';
+    if (!bankName) throw httpError(400, 'กรุณาระบุชื่อธนาคาร');
+    if (bankName.length > 100) throw httpError(400, 'ชื่อธนาคารยาวเกินไป');
+    const bankAccountNumber = typeof req.body.bank_account_number === 'string' ? req.body.bank_account_number.trim() : '';
+    if (!bankAccountNumber) throw httpError(400, 'กรุณาระบุเลขบัญชีธนาคาร');
+    if (bankAccountNumber.length > 50) throw httpError(400, 'เลขบัญชีธนาคารยาวเกินไป');
+    const bankAccountName = typeof req.body.bank_account_name === 'string' ? req.body.bank_account_name.trim() : '';
+    if (!bankAccountName) throw httpError(400, 'กรุณาระบุชื่อบัญชีธนาคาร');
+    if (bankAccountName.length > 150) throw httpError(400, 'ชื่อบัญชีธนาคารยาวเกินไป');
 
     const refundId = await withTransaction(async (conn) => {
       const [orders] = await conn.query('SELECT order_id, user_id, payment_status FROM Orders WHERE order_id = ? FOR UPDATE', [orderId]);
@@ -84,9 +95,20 @@ router.post('/', requireRole('user'), async (req, res, next) => {
       }
 
       const [insert] = await conn.query(
-        `INSERT INTO Refunds (order_id, payment_id, user_id, refund_amount, reason, evidence_path, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [orderId, payment.payment_id, req.user.id, amount, reason, evidencePath, REFUND_STATUS.REFUND_REQUESTED]
+        `INSERT INTO Refunds (order_id, payment_id, user_id, refund_amount, reason, evidence_path, bank_name, bank_account_number, bank_account_name, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          orderId,
+          payment.payment_id,
+          req.user.id,
+          amount,
+          reason,
+          evidencePath,
+          bankName,
+          bankAccountNumber,
+          bankAccountName,
+          REFUND_STATUS.REFUND_REQUESTED,
+        ]
       );
       return insert.insertId;
     });
@@ -101,7 +123,9 @@ router.post('/', requireRole('user'), async (req, res, next) => {
 const LIST_SELECT = `
   SELECT r.refund_id, r.order_id, r.payment_id, r.user_id, r.refund_amount, r.reason, r.status,
          r.rejected_reason, r.approved_at, r.refunded_at, r.created_at,
+         r.bank_name, r.bank_account_number, r.bank_account_name,
          (r.evidence_path IS NOT NULL) AS has_evidence,
+         (r.transfer_slip_path IS NOT NULL) AS has_transfer_slip,
          u.username, a.username AS approved_by_name, p.amount AS paid_amount
   FROM Refunds r
   JOIN Users u ON u.id = r.user_id
@@ -114,6 +138,7 @@ function formatRefund(row) {
     refund_amount: Number(row.refund_amount),
     paid_amount: Number(row.paid_amount),
     has_evidence: !!Number(row.has_evidence),
+    has_transfer_slip: !!Number(row.has_transfer_slip),
   };
 }
 
@@ -152,6 +177,22 @@ router.get('/:id/evidence', async (req, res, next) => {
     const canSee = refund && (req.user.role === 'accounting' || (req.user.role === 'user' && refund.user_id === req.user.id));
     if (!canSee) throw httpError(404, 'ไม่พบคำขอคืนเงิน');
     return sendPrivateFile(res, refund.evidence_path);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/refunds/:id/transfer-slip — proof accounting attached when they
+// actually transferred the money back.
+router.get('/:id/transfer-slip', async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) throw httpError(400, 'รหัสคำขอคืนเงินไม่ถูกต้อง');
+    const [rows] = await pool.query('SELECT user_id, transfer_slip_path FROM Refunds WHERE refund_id = ?', [id]);
+    const refund = rows[0];
+    const canSee = refund && (req.user.role === 'accounting' || (req.user.role === 'user' && refund.user_id === req.user.id));
+    if (!canSee) throw httpError(404, 'ไม่พบคำขอคืนเงิน');
+    return sendPrivateFile(res, refund.transfer_slip_path);
   } catch (err) {
     next(err);
   }
@@ -244,19 +285,27 @@ router.post('/:id/reject', requireRole('accounting'), async (req, res, next) => 
 });
 
 // POST /api/refunds/:id/mark-refunded — accounting records that the money
-// has actually been transferred back to the customer.
+// has actually been transferred back to the customer. A transfer slip
+// (multipart field "transfer_slip") is required as proof the transfer really
+// happened.
 router.post('/:id/mark-refunded', requireRole('accounting'), async (req, res, next) => {
+  let transferSlipPath = null;
   try {
     const id = parseId(req.params.id);
     if (!id) throw httpError(400, 'รหัสคำขอคืนเงินไม่ถูกต้อง');
 
+    const file = await runUpload(evidenceUpload, 'transfer_slip', req, res);
+    if (!file) throw httpError(400, 'กรุณาแนบสลิป/หลักฐานการโอนเงินคืน');
+    transferSlipPath = relativePathFor('refunds', file);
+
     await withTransaction(async (conn) => {
       const refund = await lockRefund(conn, id);
       if (refund.status !== REFUND_STATUS.REFUND_APPROVED) throw httpError(409, 'บันทึกการโอนคืนได้เฉพาะคำขอที่อนุมัติแล้ว');
-      await conn.query('UPDATE Refunds SET status = ?, refunded_by = ?, refunded_at = ? WHERE refund_id = ?', [
+      await conn.query('UPDATE Refunds SET status = ?, refunded_by = ?, refunded_at = ?, transfer_slip_path = ? WHERE refund_id = ?', [
         REFUND_STATUS.REFUNDED,
         req.user.id,
         new Date(),
+        transferSlipPath,
         id,
       ]);
       await logAudit(conn, req.user, AUDIT_ACTIONS.MARK_REFUNDED, 'refund', id, {
@@ -267,6 +316,7 @@ router.post('/:id/mark-refunded', requireRole('accounting'), async (req, res, ne
 
     res.json({ success: true, refund_id: id, status: REFUND_STATUS.REFUNDED });
   } catch (err) {
+    removePrivateFile(transferSlipPath);
     next(err);
   }
 });

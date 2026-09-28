@@ -60,11 +60,11 @@ export function LoginScreen({
               contentFit="contain"
             />
             <ThemedText type="subtitle" style={styles.appName}>
-              Mee Dood Cha
+              hello test.t
             </ThemedText>
           </View>
           <ThemedText type="small" themeColor="textSecondary">
-            เข้าสู่ระบบเพื่อเข้าสู่ร้าน Mee Dood Cha
+            เข้าสู่ระบบเพื่อเข้าสู่ร้าน hello test.t
           </ThemedText>
         </View>
 
