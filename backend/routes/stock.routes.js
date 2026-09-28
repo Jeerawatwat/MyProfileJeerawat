@@ -3,6 +3,7 @@
 const express = require('express');
 const { pool } = require('../config/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { allocateSerials, releaseSerials } = require('../services/productUnits');
 
 const router = express.Router();
 
@@ -113,6 +114,15 @@ router.patch('/inventory/:id', async (req, res, next) => {
     const delta = finalStock - previousStock;
 
     await conn.query('UPDATE Inventory SET stock = ? WHERE id = ?', [finalStock, id]);
+
+    // Keep the Serial Number pool (Product_Units, sql/009_product_claims.sql)
+    // roughly in step with the stock count adjusted here — same as
+    // products.routes.js's PUT /:id does for the admin's own product-edit
+    // form. Not required for correctness (assignUnitsForOrder mints a
+    // shortfall serial on the spot if this pool ever runs short — see that
+    // function's comment), just keeps the pool from drifting unnecessarily.
+    if (delta > 0) await allocateSerials(conn, id, delta);
+    else if (delta < 0) await releaseSerials(conn, id, -delta);
 
     // Insert into Stock_Logs if the table exists
     try {

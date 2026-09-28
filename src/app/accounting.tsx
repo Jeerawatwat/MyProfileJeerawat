@@ -36,6 +36,8 @@ const AUDIT_LABELS: Record<string, string> = {
   EDIT_EXPENSE: 'แก้ไขรายจ่าย',
   DELETE_EXPENSE: 'ลบรายจ่าย',
   EXPORT_FINANCIAL_REPORT: 'Export รายงานการเงิน',
+  CREATE_CLAIM: 'แจ้งเคลมสินค้า',
+  UPDATE_CLAIM_STATUS: 'อัปเดตสถานะการเคลม',
 };
 
 function auditTarget(log: AuditLog) {
@@ -43,6 +45,7 @@ function auditTarget(log: AuditLog) {
   if (log.entity_type === 'payment') return `Order #${d.order_id ?? '-'}`;
   if (log.entity_type === 'refund') return `REF-${log.entity_id} (Order #${d.order_id ?? '-'})`;
   if (log.entity_type === 'expense') return `รายจ่าย #${log.entity_id}`;
+  if (log.entity_type === 'claim') return `เคลม #${log.entity_id} (Order #${d.order_id ?? '-'})`;
   if (log.entity_type === 'report') return `${d.from ?? ''} – ${d.to ?? ''}`;
   return '';
 }

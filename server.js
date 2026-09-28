@@ -24,6 +24,8 @@ const financialReportsRoutes = require('./backend/routes/financial-reports.route
 const managerRoutes = require('./backend/routes/manager.routes');
 const deliveryRoutes = require('./backend/routes/delivery.routes');
 const stockRoutes = require('./backend/routes/stock.routes');
+const productUnitsRoutes = require('./backend/routes/product-units.routes');
+const claimsRoutes = require('./backend/routes/claims.routes');
 
 const app = express();
 const port = process.env.PORT || 3079;
@@ -63,6 +65,10 @@ app.use('/api/financial-reports', financialReportsRoutes);
 app.use('/api/manager', managerRoutes);
 app.use('/api/delivery', deliveryRoutes);
 app.use('/api/stock', stockRoutes);
+// Product warranty claims — Serial Number lookup + the claim itself. Same
+// private-file model as slips/refund evidence above (private_uploads/claims/).
+app.use('/api/product-units', productUnitsRoutes);
+app.use('/api/claims', claimsRoutes);
 
 // Legacy endpoint kept for backwards compatibility with the original server.js.
 // It now requires auth (it used to be public), because it returns the same real

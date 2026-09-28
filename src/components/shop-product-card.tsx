@@ -41,6 +41,8 @@ export function ShopProductCard({ product, onOpenDetail, onAddToCart, onBuyNow }
   const theme = useTheme();
   const photoUrl = resolveImageUrl(product.image_url);
   const isOut = product.stock <= 0;
+  const onSale = product.original_price != null && product.original_price > product.price;
+  const discountPercent = onSale ? Math.round((1 - product.price / product.original_price!) * 100) : 0;
 
   return (
     <ThemedView type="cardBackground" style={[styles.card, { borderColor: theme.border }]}>
@@ -55,6 +57,13 @@ export function ShopProductCard({ product, onOpenDetail, onAddToCart, onBuyNow }
               </ThemedText>
             </View>
           )}
+          {onSale && !isOut ? (
+            <View style={[styles.salePill, { backgroundColor: theme.danger }]}>
+              <ThemedText type="small" style={styles.salePillText}>
+                🔥 ลด {discountPercent}%
+              </ThemedText>
+            </View>
+          ) : null}
           {isOut && (
             <View style={styles.soldOutOverlay}>
               <View style={styles.soldOutPill}>
@@ -88,8 +97,13 @@ export function ShopProductCard({ product, onOpenDetail, onAddToCart, onBuyNow }
               </View>
             ) : null}
           </View>
+          {onSale ? (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.originalPrice}>
+              {formatBaht(product.original_price!)}
+            </ThemedText>
+          ) : null}
           <View style={styles.footerRow}>
-            <ThemedText type="smallBold" style={styles.price}>
+            <ThemedText type="smallBold" style={[styles.price, onSale && { color: theme.danger }]}>
               {formatBaht(product.price)}
             </ThemedText>
             <StockBadge stock={product.stock} />
@@ -150,14 +164,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(251,248,241,.66)',
+    backgroundColor: 'rgba(20,20,20,.66)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   soldOutPill: {
     paddingVertical: 5,
     paddingHorizontal: 11,
-    backgroundColor: '#1A1A17',
+    backgroundColor: '#141414',
     borderRadius: 9,
   },
   soldOutText: {
@@ -165,6 +179,22 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.6,
     fontSize: 11,
+  },
+  salePill: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 9,
+  },
+  salePillText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 11,
+  },
+  originalPrice: {
+    textDecorationLine: 'line-through',
   },
   info: {
     padding: Spacing.three,

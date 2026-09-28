@@ -62,6 +62,7 @@ export default function ProductsScreen() {
   const [menuTarget, setMenuTarget] = useState<Product | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isPromoBusy, setIsPromoBusy] = useState(false);
 
   useEffect(() => {
     if (typeof params.category === 'string' && params.category) {
@@ -140,6 +141,36 @@ export default function ProductsScreen() {
     }
   };
 
+  const handleRandomizePromotions = async () => {
+    setIsPromoBusy(true);
+    try {
+      const result = await productsApi.randomizePromotions();
+      showToast(
+        result.promoted_count > 0
+          ? `จัดโปรโมชั่นสุ่มให้ ${result.promoted_count} รายการแล้ว`
+          : 'ไม่มีสินค้าที่พร้อมจัดโปรโมชั่น (ต้องมีสต๊อกและเปิดขายอยู่)'
+      );
+      await refreshAfterMutation();
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'จัดโปรโมชั่นไม่สำเร็จ', 'error');
+    } finally {
+      setIsPromoBusy(false);
+    }
+  };
+
+  const handleClearPromotions = async () => {
+    setIsPromoBusy(true);
+    try {
+      const result = await productsApi.clearPromotions();
+      showToast(result.restored_count > 0 ? `ล้างโปรโมชั่น ${result.restored_count} รายการแล้ว` : 'ไม่มีโปรโมชั่นที่กำลังใช้งานอยู่');
+      await refreshAfterMutation();
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'ล้างโปรโมชั่นไม่สำเร็จ', 'error');
+    } finally {
+      setIsPromoBusy(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
@@ -209,6 +240,23 @@ export default function ProductsScreen() {
             onPress={() => setLayout((l) => (l === 'grid' ? 'list' : 'grid'))}
             style={[styles.viewToggle, { backgroundColor: theme.text }]}>
             <ThemedText style={styles.viewToggleIcon}>{layout === 'grid' ? '☰' : '⊞'}</ThemedText>
+          </Pressable>
+        </View>
+
+        <View style={styles.promoRow}>
+          <Pressable
+            disabled={isPromoBusy}
+            onPress={handleRandomizePromotions}
+            style={[styles.promoButton, { backgroundColor: theme.danger }, isPromoBusy && styles.promoButtonDisabled]}>
+            <ThemedText type="smallBold" style={styles.promoButtonLabel}>
+              🎲 สุ่มจัดโปรโมชั่น
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            disabled={isPromoBusy}
+            onPress={handleClearPromotions}
+            style={[styles.promoButton, { backgroundColor: theme.backgroundElement }, isPromoBusy && styles.promoButtonDisabled]}>
+            <ThemedText type="smallBold">ล้างโปรโมชั่นทั้งหมด</ThemedText>
           </Pressable>
         </View>
 
@@ -359,7 +407,7 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#F2B705',
+    shadowColor: '#2196F3',
     shadowOpacity: 0.5,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
@@ -393,8 +441,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   viewToggleIcon: {
-    color: '#FFD84D',
+    color: '#2196F3',
     fontSize: 17,
+  },
+  promoRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  promoButton: {
+    flex: 1,
+    paddingVertical: Spacing.two,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  promoButtonLabel: {
+    color: '#FFFFFF',
+  },
+  promoButtonDisabled: {
+    opacity: 0.6,
   },
   statRow: {
     flexDirection: 'row',

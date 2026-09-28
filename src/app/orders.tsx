@@ -13,16 +13,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ClaimRequestSheet, type ClaimTrigger } from '@/components/claim-request-sheet';
 import { EmptyState } from '@/components/empty-state';
 import { OrderStatusBadge } from '@/components/order-status-badge';
 import { PaymentSheet } from '@/components/payment-sheet';
-import { PaymentStatusBadge, RefundStatusBadge } from '@/components/payment-status-badge';
+import { ClaimStatusBadge, PaymentStatusBadge, RefundStatusBadge } from '@/components/payment-status-badge';
 import { RefundRequestSheet, refundableAmount } from '@/components/refund-request-sheet';
 import { RequireUser } from '@/components/role-guard';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useToast } from '@/context/toast-context';
-import { ApiError, downloadAuthedFile, formatBaht, ordersApi, paymentsApi, type Order } from '@/lib/api';
+import { ApiError, downloadAuthedFile, formatBaht, openAuthedFile, ordersApi, paymentsApi, refundsApi, type Order } from '@/lib/api';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -40,6 +41,15 @@ function canPay(order: Order) {
   return order.status !== 'ยกเลิก' && PAYABLE.includes(order.payment_status);
 }
 
+// A line item can be claimed once it has an assigned Serial Number (only
+// happens after the order reaches จัดส่งแล้ว/สำเร็จ — see
+// backend/services/productUnits.js) and that unit is still in warranty.
+function claimableSerial(item: Order['items'][number]): string | null {
+  const today = new Date(new Date().toDateString());
+  const unit = item.units.find((u) => !u.warranty_expires_at || new Date(u.warranty_expires_at) >= today);
+  return unit ? unit.serial_no : null;
+}
+
 function OrdersScreenContent() {
   const theme = useTheme();
   const router = useRouter();
@@ -51,6 +61,7 @@ function OrdersScreenContent() {
   const [error, setError] = useState<string | null>(null);
   const [payTarget, setPayTarget] = useState<Order | null>(null);
   const [refundTarget, setRefundTarget] = useState<Order | null>(null);
+  const [claimTrigger, setClaimTrigger] = useState<ClaimTrigger>(null);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -102,6 +113,14 @@ function OrdersScreenContent() {
     }
   };
 
+  const viewTransferSlip = async (refundId: number) => {
+    try {
+      await openAuthedFile(refundsApi.transferSlipPath(refundId));
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'เปิดหลักฐานการโอนคืนไม่สำเร็จ', 'error');
+    }
+  };
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -145,14 +164,33 @@ function OrdersScreenContent() {
                 ) : null}
 
                 <View style={[styles.itemsBox, { borderTopColor: theme.border }]}>
-                  {order.items.map((item) => (
-                    <View key={item.product_id} style={styles.itemRow}>
-                      <ThemedText type="small" style={styles.itemName} numberOfLines={1}>
-                        {item.name} × {item.quantity}
-                      </ThemedText>
-                      <ThemedText type="small">{formatBaht(item.subtotal)}</ThemedText>
-                    </View>
-                  ))}
+                  {order.items.map((item, index) => {
+                    const serial = claimableSerial(item);
+                    // Falls back to product_id+index if talking to a backend
+                    // that predates order_detail_id being returned here (see
+                    // normalizeOrder's similar defaults in lib/api.ts) — keeps
+                    // React's key always unique even against a stale server.
+                    const key = item.order_detail_id ?? `${item.product_id}-${index}`;
+                    return (
+                      <View key={key} style={styles.claimableItem}>
+                        <View style={styles.itemRow}>
+                          <ThemedText type="small" style={styles.itemName} numberOfLines={1}>
+                            {item.name} × {item.quantity}
+                          </ThemedText>
+                          <ThemedText type="small">{formatBaht(item.subtotal)}</ThemedText>
+                        </View>
+                        {serial ? (
+                          <Pressable
+                            style={[styles.claimButton, { backgroundColor: theme.primary }]}
+                            onPress={() => setClaimTrigger({ orderId: order.order_id, serial })}>
+                            <ThemedText type="small" themeColor="primaryText" style={{ fontWeight: '700' }}>
+                              แจ้งเคลม ({serial})
+                            </ThemedText>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    );
+                  })}
                 </View>
 
                 {order.shipping_fee > 0 || order.discount > 0 ? (
@@ -204,7 +242,25 @@ function OrdersScreenContent() {
                             เหตุผล: {r.rejected_reason}
                           </ThemedText>
                         ) : null}
+                        {r.status === 'REFUNDED' && r.has_transfer_slip ? (
+                          <Pressable onPress={() => viewTransferSlip(r.refund_id)}>
+                            <ThemedText type="small" themeColor="primary">
+                              ดูหลักฐานการโอนเงินคืน
+                            </ThemedText>
+                          </Pressable>
+                        ) : null}
                       </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                {order.claims.length > 0 ? (
+                  <View style={[styles.itemsBox, { borderTopColor: theme.border }]}>
+                    {order.claims.map((c) => (
+                      <Pressable key={c.claim_id} style={styles.itemRow} onPress={() => router.push('/claim-tracking')}>
+                        <ThemedText type="small">ใบเคลม {c.claim_no}</ThemedText>
+                        <ClaimStatusBadge status={c.status} />
+                      </Pressable>
                     ))}
                   </View>
                 ) : null}
@@ -260,6 +316,15 @@ function OrdersScreenContent() {
         onSubmitted={() => {
           setRefundTarget(null);
           showToast('ส่งคำขอคืนเงินแล้ว รอฝ่ายบัญชีพิจารณา');
+          load();
+        }}
+      />
+      <ClaimRequestSheet
+        trigger={claimTrigger}
+        onClose={() => setClaimTrigger(null)}
+        onSubmitted={(result) => {
+          setClaimTrigger(null);
+          showToast(`ส่งคำขอเคลม ${result.claim_no} แล้ว`);
           load();
         }}
       />
@@ -320,6 +385,15 @@ const styles = StyleSheet.create({
   },
   refundRow: {
     gap: 2,
+  },
+  claimableItem: {
+    gap: Spacing.one,
+  },
+  claimButton: {
+    alignSelf: 'flex-start',
+    borderRadius: Spacing.three,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
   },
   actions: {
     flexDirection: 'row',

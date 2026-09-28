@@ -57,6 +57,9 @@ export function ProductFormModal({
   const [stock, setStock] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [description, setDescription] = useState('');
+  const [model, setModel] = useState('');
+  const [warrantyMonths, setWarrantyMonths] = useState('12');
+  const [serialPrefix, setSerialPrefix] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -70,12 +73,19 @@ export function ProductFormModal({
     setStock(initialProduct ? String(initialProduct.stock) : '');
     setImageUrl(initialProduct?.image_url ?? '');
     setDescription(initialProduct?.description ?? '');
+    setModel(initialProduct?.model ?? '');
+    setWarrantyMonths(initialProduct ? String(initialProduct.warranty_months) : '12');
+    setSerialPrefix(initialProduct?.serial_prefix ?? '');
     setErrors([]);
     setUploadError(null);
   }, [visible, initialProduct]);
 
   const handleSubmit = async () => {
     const result = validate(name, category, price, stock);
+    const warrantyNumber = warrantyMonths.trim() === '' ? 12 : Number(warrantyMonths);
+    if (!Number.isInteger(warrantyNumber) || warrantyNumber < 0) {
+      result.errors.push('Warranty months must be a non-negative whole number');
+    }
     if (result.errors.length) {
       setErrors(result.errors);
       return;
@@ -88,6 +98,9 @@ export function ProductFormModal({
       stock: result.stockNumber,
       image_url: imageUrl.trim() || null,
       description: description.trim() || null,
+      model: model.trim() || null,
+      warranty_months: warrantyNumber,
+      serial_prefix: serialPrefix.trim() || null,
     });
   };
 
@@ -237,6 +250,42 @@ export function ProductFormModal({
                 numberOfLines={3}
                 style={[styles.input, styles.textArea, { color: theme.text, borderColor: theme.border }]}
               />
+            </View>
+
+            <View style={styles.field}>
+              <ThemedText type="smallBold">Model (optional)</ThemedText>
+              <TextInput
+                value={model}
+                onChangeText={setModel}
+                placeholder="e.g. X1 — shown on the warranty claim form/PDF"
+                placeholderTextColor={theme.textSecondary}
+                style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+              />
+            </View>
+
+            <View style={styles.row}>
+              <View style={[styles.field, styles.rowItem]}>
+                <ThemedText type="smallBold">Warranty (months)</ThemedText>
+                <TextInput
+                  value={warrantyMonths}
+                  onChangeText={setWarrantyMonths}
+                  placeholder="12"
+                  keyboardType="number-pad"
+                  placeholderTextColor={theme.textSecondary}
+                  style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement }]}
+                />
+              </View>
+              <View style={[styles.field, styles.rowItem]}>
+                <ThemedText type="smallBold">Serial prefix (optional)</ThemedText>
+                <TextInput
+                  value={serialPrefix}
+                  onChangeText={(text) => setSerialPrefix(text.toUpperCase())}
+                  placeholder="e.g. SPK — auto if left blank"
+                  autoCapitalize="characters"
+                  placeholderTextColor={theme.textSecondary}
+                  style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement }]}
+                />
+              </View>
             </View>
 
             <View style={styles.row}>
@@ -404,7 +453,7 @@ const styles = StyleSheet.create({
   },
   cancelButton: {},
   primaryButton: {
-    shadowColor: '#F2B705',
+    shadowColor: '#2196F3',
     shadowOpacity: 0.5,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },

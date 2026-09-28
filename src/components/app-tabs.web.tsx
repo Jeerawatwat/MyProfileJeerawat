@@ -31,6 +31,9 @@ export default function AppTabs() {
           <TabTrigger name="orders-admin" href="/orders-admin" asChild>
             <TabButton icon="🧾">Orders</TabButton>
           </TabTrigger>
+          <TabTrigger name="claims-admin" href="/claims-admin" asChild>
+            <TabButton icon="🛠️">Claims</TabButton>
+          </TabTrigger>
           <TabTrigger name="profile" href="/profile" asChild>
             <TabButton icon="👤">Profile</TabButton>
           </TabTrigger>

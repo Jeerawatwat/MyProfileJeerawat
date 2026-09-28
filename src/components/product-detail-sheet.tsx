@@ -37,6 +37,8 @@ export function ProductDetailSheet({ product, onClose, onAddToCart, onBuyNow }: 
   const photoUrl = resolveImageUrl(product.image_url);
   const isOut = product.stock <= 0;
   const clampedQuantity = Math.min(Math.max(quantity, 1), Math.max(product.stock, 1));
+  const onSale = product.original_price != null && product.original_price > product.price;
+  const discountPercent = onSale ? Math.round((1 - product.price / product.original_price!) * 100) : 0;
 
   return (
     <Modal visible={!!product} transparent animationType="slide" onRequestClose={onClose}>
@@ -66,7 +68,19 @@ export function ProductDetailSheet({ product, onClose, onAddToCart, onBuyNow }: 
             <ThemedText type="small" themeColor="textSecondary">
               {product.category}
             </ThemedText>
-            <ThemedText type="title" style={styles.price}>
+            {onSale ? (
+              <View style={styles.saleRow}>
+                <View style={[styles.salePill, { backgroundColor: theme.danger }]}>
+                  <ThemedText type="small" style={styles.salePillText}>
+                    🔥 ลด {discountPercent}%
+                  </ThemedText>
+                </View>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.originalPrice}>
+                  {formatBaht(product.original_price!)}
+                </ThemedText>
+              </View>
+            ) : null}
+            <ThemedText type="title" style={[styles.price, onSale && { color: theme.danger }]}>
               {formatBaht(product.price)}
             </ThemedText>
 
@@ -179,6 +193,25 @@ const styles = StyleSheet.create({
   },
   price: {
     marginTop: Spacing.one,
+  },
+  saleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    marginTop: Spacing.two,
+  },
+  salePill: {
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 9,
+  },
+  salePillText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 11,
+  },
+  originalPrice: {
+    textDecorationLine: 'line-through',
   },
   descriptionBox: {
     marginTop: Spacing.two,

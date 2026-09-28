@@ -35,6 +35,9 @@ export function RefundRequestSheet({
   const theme = useTheme();
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankAccountName, setBankAccountName] = useState('');
   const [evidence, setEvidence] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -44,6 +47,9 @@ export function RefundRequestSheet({
     if (!order) return;
     setAmount(String(refundableAmount(order)));
     setReason('');
+    setBankName('');
+    setBankAccountNumber('');
+    setBankAccountName('');
     setEvidence(null);
     setError(null);
   }, [order]);
@@ -63,10 +69,22 @@ export function RefundRequestSheet({
       setError('กรุณาระบุเหตุผลที่ขอคืนเงิน');
       return;
     }
+    if (!bankName.trim() || !bankAccountNumber.trim() || !bankAccountName.trim()) {
+      setError('กรุณากรอกธนาคาร เลขบัญชี และชื่อบัญชีให้ครบ เพื่อให้ฝ่ายบัญชีโอนเงินคืนได้ถูกต้อง');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      await refundsApi.request({ order_id: order.order_id, refund_amount: trimmed, reason: reason.trim(), evidence });
+      await refundsApi.request({
+        order_id: order.order_id,
+        refund_amount: trimmed,
+        reason: reason.trim(),
+        bank_name: bankName.trim(),
+        bank_account_number: bankAccountNumber.trim(),
+        bank_account_name: bankAccountName.trim(),
+        evidence,
+      });
       onSubmitted();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'ส่งคำขอคืนเงินไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
@@ -106,6 +124,48 @@ export function RefundRequestSheet({
                 multiline
                 numberOfLines={3}
                 style={[styles.input, styles.textArea, { borderColor: theme.border, color: theme.text }]}
+                editable={!submitting}
+              />
+            </View>
+
+            <ThemedText type="smallBold">บัญชีธนาคารสำหรับรับเงินคืน</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              ฝ่ายบัญชีจะโอนเงินคืนเข้าบัญชีนี้ กรุณากรอกให้ถูกต้อง
+            </ThemedText>
+
+            <View style={styles.field}>
+              <ThemedText type="smallBold">ธนาคาร</ThemedText>
+              <TextInput
+                value={bankName}
+                onChangeText={setBankName}
+                placeholder="เช่น ธนาคารกสิกรไทย"
+                placeholderTextColor={theme.textSecondary}
+                style={[styles.input, { borderColor: theme.border, color: theme.text }]}
+                editable={!submitting}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <ThemedText type="smallBold">เลขบัญชี</ThemedText>
+              <TextInput
+                value={bankAccountNumber}
+                onChangeText={setBankAccountNumber}
+                placeholder="เลขที่บัญชีธนาคาร"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="number-pad"
+                style={[styles.input, { borderColor: theme.border, color: theme.text }]}
+                editable={!submitting}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <ThemedText type="smallBold">ชื่อบัญชี</ThemedText>
+              <TextInput
+                value={bankAccountName}
+                onChangeText={setBankAccountName}
+                placeholder="ชื่อ-นามสกุลเจ้าของบัญชี"
+                placeholderTextColor={theme.textSecondary}
+                style={[styles.input, { borderColor: theme.border, color: theme.text }]}
                 editable={!submitting}
               />
             </View>

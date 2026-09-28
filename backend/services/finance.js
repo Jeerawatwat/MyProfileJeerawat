@@ -15,6 +15,7 @@
 //   * Net     = (product sales + shipping) - discount - refunds - expenses
 const { pool } = require('../config/db');
 const { round2, toSatang, fromSatang } = require('../utils/money');
+const { httpError } = require('../utils/transaction');
 
 const PAYMENT_STATUS = {
   PENDING_PAYMENT: 'PENDING_PAYMENT',
@@ -128,6 +129,41 @@ async function sumRefundsSatang(db, paymentId, statuses, { excludeRefundId } = {
   }
   const [[row]] = await db.query(sql, params);
   return toSatang(row.total);
+}
+
+// Creates a Refund request row exactly like a buyer's own POST /api/refunds
+// would (see refunds.routes.js), same cap check (requested + approved +
+// refunded can never exceed what was actually paid, in satang, under a row
+// lock) — used when a warranty claim is approved with resolution REFUND
+// (backend/routes/claims.routes.js). The refund still starts as
+// REFUND_REQUESTED: accounting approves/rejects/marks-refunded it exactly the
+// same as a customer-initiated one, nothing here moves money on its own.
+async function createRefundRequestTx(conn, { orderId, userId, amount, reason, evidencePath = null }) {
+  const [orders] = await conn.query('SELECT order_id, payment_status FROM Orders WHERE order_id = ? FOR UPDATE', [orderId]);
+  const order = orders[0];
+  if (!order) throw httpError(404, 'ไม่พบคำสั่งซื้อ');
+  if (order.payment_status !== PAYMENT_STATUS.PAID) {
+    throw httpError(409, 'ขอคืนเงินได้เฉพาะคำสั่งซื้อที่ชำระเงินและได้รับการยืนยันแล้ว');
+  }
+  const [payments] = await conn.query(
+    'SELECT payment_id, amount FROM Payments WHERE order_id = ? AND payment_status = ? FOR UPDATE',
+    [orderId, PAYMENT_STATUS.PAID]
+  );
+  const payment = payments[0];
+  if (!payment) throw httpError(409, 'ไม่พบการชำระเงินที่ยืนยันแล้วของคำสั่งซื้อนี้');
+
+  const reservedS = await sumRefundsSatang(conn, payment.payment_id, REFUND_RESERVING_STATUSES);
+  const remainingS = toSatang(payment.amount) - reservedS;
+  if (toSatang(amount) > remainingS) {
+    throw httpError(409, `ขอคืนได้ไม่เกิน ${fromSatang(Math.max(remainingS, 0)).toFixed(2)} บาท`);
+  }
+
+  const [insert] = await conn.query(
+    `INSERT INTO Refunds (order_id, payment_id, user_id, refund_amount, reason, evidence_path, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [orderId, payment.payment_id, userId, amount, reason, evidencePath, REFUND_STATUS.REFUND_REQUESTED]
+  );
+  return { refund_id: insert.insertId, payment_id: payment.payment_id };
 }
 
 // ---- Report --------------------------------------------------------------
@@ -315,6 +351,7 @@ module.exports = {
   parseDateRange,
   getOrderFinancials,
   sumRefundsSatang,
+  createRefundRequestTx,
   buildFinancialReport,
   formatExpenseRow,
   formatDateOnly,

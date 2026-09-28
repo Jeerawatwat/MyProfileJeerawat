@@ -7,34 +7,40 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
+// Black / sky-blue / white — matches the shop's own mascot logo
+// (assets/images/shop-logo.png: a black speaker character with blue trim on
+// a white background) instead of the earlier gold-and-crimson luxury theme.
+// `primary` is that same bright, friendly blue; danger/success/warning stay
+// their usual red/green/amber since those are functional status colors, not
+// a branding choice.
 export const Colors = {
   light: {
-    text: '#1A1A17',
-    background: '#F1EDE3',
-    backgroundElement: '#F7F3E9',
-    backgroundSelected: '#EDE7D8',
-    textSecondary: '#8A8470',
-    primary: '#FFD84D',
-    primaryText: '#1A1A17',
-    danger: '#D33A3F',
-    success: '#1F7A46',
-    warning: '#96700A',
-    border: '#EDE7D8',
+    text: '#12181F',
+    background: '#F5FAFF',
+    backgroundElement: '#E9F4FE',
+    backgroundSelected: '#D6EAFB',
+    textSecondary: '#5C6B78',
+    primary: '#2196F3',
+    primaryText: '#FFFFFF',
+    danger: '#DC2626',
+    success: '#16A34A',
+    warning: '#D97706',
+    border: '#DCEBF9',
     cardBackground: '#FFFFFF',
   },
   dark: {
-    text: '#F5F1E4',
-    background: '#15130E',
-    backgroundElement: '#211E15',
-    backgroundSelected: '#2B271B',
-    textSecondary: '#A79F8C',
-    primary: '#FFD84D',
-    primaryText: '#1A1A17',
-    danger: '#FF6B6F',
-    success: '#4CC079',
-    warning: '#E0B95C',
-    border: '#2B271B',
-    cardBackground: '#1D1A13',
+    text: '#F2F7FC',
+    background: '#0A121C',
+    backgroundElement: '#132234',
+    backgroundSelected: '#1B3348',
+    textSecondary: '#8CA0B3',
+    primary: '#42A5F5',
+    primaryText: '#0A121C',
+    danger: '#F87171',
+    success: '#4ADE80',
+    warning: '#FBBF24',
+    border: '#1B3348',
+    cardBackground: '#101B29',
   },
 } as const;
 

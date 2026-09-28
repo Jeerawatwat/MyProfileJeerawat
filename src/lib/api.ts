@@ -54,11 +54,20 @@ export type Product = {
   id: number;
   name: string;
   price: number;
+  // Set only while the product is on a random promotion (see
+  // POST /api/products/promotions/randomize) — the pre-discount price, kept
+  // purely for the "was X, now Y" display. `price` itself is already the
+  // real, checkout-honored discounted price.
+  original_price: number | null;
   stock: number;
   category: string;
   image_url: string | null;
   description: string | null;
   priceTier?: PriceTier | null;
+  // Warranty claim fields — see sql/009_product_claims.sql.
+  model: string | null;
+  warranty_months: number;
+  serial_prefix: string | null;
 };
 
 export type ProductInput = {
@@ -68,6 +77,9 @@ export type ProductInput = {
   category: string;
   image_url?: string | null;
   description?: string | null;
+  model?: string | null;
+  warranty_months?: number;
+  serial_prefix?: string | null;
 };
 
 export type CategorySummary = { category: string; productCount: number };
@@ -111,6 +123,14 @@ export const productsApi = {
   update: (id: number, data: ProductInput) =>
     request<Product>(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   remove: (id: number) => request<{ success: boolean }>(`/api/products/${id}`, { method: 'DELETE' }),
+  randomizePromotions: () =>
+    request<{
+      success: boolean;
+      promoted_count: number;
+      promoted: { id: number; original_price: number; price: number; discount_percent: number }[];
+    }>('/api/products/promotions/randomize', { method: 'POST' }),
+  clearPromotions: () =>
+    request<{ success: boolean; restored_count: number }>('/api/products/promotions/clear', { method: 'POST' }),
 };
 
 export const categoriesApi = {
@@ -421,12 +441,18 @@ export const ORDER_STATUSES = [
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+export type OrderUnit = { serial_no: string; warranty_expires_at: string | null };
+
 export type OrderItem = {
+  order_detail_id: number;
   product_id: number;
   name: string;
   quantity: number;
   price: number;
   subtotal: number;
+  // Serial Numbers assigned to this line — only populated once the order
+  // reaches จัดส่งแล้ว/สำเร็จ (see backend/services/productUnits.js).
+  units: OrderUnit[];
 };
 
 // Financial state of an order — separate from `status` (fulfilment). Only
@@ -468,6 +494,14 @@ export type OrderRefundSummary = {
   status: string;
   rejected_reason: string | null;
   created_at: string;
+  has_transfer_slip: boolean;
+};
+
+export type OrderClaimSummary = {
+  claim_id: number;
+  claim_no: string;
+  status: string;
+  created_at: string;
 };
 
 export type Order = {
@@ -485,6 +519,7 @@ export type Order = {
   items: OrderItem[];
   payment: OrderPaymentSummary | null; // latest payment attempt, if any
   refunds: OrderRefundSummary[];
+  claims: OrderClaimSummary[];
 };
 
 export type CreateOrderInput = {
@@ -495,7 +530,7 @@ export type CreateOrderInput = {
 // predates sql/005_accounting_finance.sql (it simply doesn't send them), so
 // the order screens keep working instead of crashing on `refunds.length`.
 function normalizeOrder(o: Order): Order {
-  const items = o.items ?? [];
+  const items = (o.items ?? []).map((item) => ({ ...item, units: item.units ?? [] }));
   return {
     ...o,
     items,
@@ -505,6 +540,7 @@ function normalizeOrder(o: Order): Order {
     product_amount: o.product_amount ?? items.reduce((sum, i) => sum + i.subtotal, 0),
     payment: o.payment ?? null,
     refunds: o.refunds ?? [],
+    claims: o.claims ?? [],
   };
 }
 
@@ -579,7 +615,11 @@ export type Refund = {
   approved_by_name: string | null;
   refunded_at: string | null;
   created_at: string;
+  bank_name: string | null;
+  bank_account_number: string | null;
+  bank_account_name: string | null;
   has_evidence: boolean;
+  has_transfer_slip: boolean;
 };
 
 export const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
@@ -698,7 +738,15 @@ export const paymentsApi = {
 };
 
 export const refundsApi = {
-  request: (data: { order_id: number; refund_amount: string; reason: string; evidence?: File | null }) =>
+  request: (data: {
+    order_id: number;
+    refund_amount: string;
+    reason: string;
+    bank_name: string;
+    bank_account_number: string;
+    bank_account_name: string;
+    evidence?: File | null;
+  }) =>
     request<{ refund_id: number; status: string }>('/api/refunds', {
       method: 'POST',
       body: toForm(
@@ -706,6 +754,9 @@ export const refundsApi = {
           order_id: String(data.order_id),
           refund_amount: data.refund_amount,
           reason: data.reason,
+          bank_name: data.bank_name,
+          bank_account_number: data.bank_account_number,
+          bank_account_name: data.bank_account_name,
           evidence: data.evidence ?? undefined,
         },
         data.evidence ? { evidence: data.evidence.name } : {}
@@ -718,9 +769,171 @@ export const refundsApi = {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
-  markRefunded: (id: number) =>
-    request<{ success: boolean; status: string }>(`/api/refunds/${id}/mark-refunded`, { method: 'POST' }),
+  markRefunded: (id: number, transferSlip: File) =>
+    request<{ success: boolean; status: string }>(`/api/refunds/${id}/mark-refunded`, {
+      method: 'POST',
+      body: toForm({ transfer_slip: transferSlip }, { transfer_slip: transferSlip.name }),
+    }),
   evidencePath: (id: number) => `/api/refunds/${id}/evidence`,
+  transferSlipPath: (id: number) => `/api/refunds/${id}/transfer-slip`,
+};
+
+// ---- Product warranty claims ---------------------------------------------
+// See sql/009_product_claims.sql + backend/routes/claims.routes.js.
+
+export const CLAIM_STATUS_LABELS: Record<string, string> = {
+  PENDING_REVIEW: 'รอตรวจสอบ',
+  INSPECTING: 'กำลังตรวจสอบสินค้า',
+  APPROVED: 'อนุมัติการเคลม',
+  REJECTED: 'ไม่อนุมัติการเคลม',
+  REPAIRING: 'กำลังซ่อม',
+  SHIPPING_REPLACEMENT: 'กำลังจัดส่งสินค้าใหม่',
+  COMPLETED: 'เคลมเสร็จสิ้น',
+};
+
+// Order shown in the customer-facing timeline (REJECTED is a side-branch, not
+// a step on this line — see isValidStatusTransition in backend/services/claims.js).
+export const CLAIM_STATUS_TIMELINE = [
+  'PENDING_REVIEW',
+  'INSPECTING',
+  'APPROVED',
+  'REPAIRING',
+  'SHIPPING_REPLACEMENT',
+  'COMPLETED',
+] as const;
+
+export const CLAIM_COMPONENT_LABELS: Record<string, string> = {
+  SPEAKER: 'ลำโพง',
+  MICROPHONE: 'ไมโครโฟน',
+  CHARGING_CABLE: 'สายชาร์จ',
+  ADAPTER: 'อะแดปเตอร์',
+  OTHER: 'อื่น ๆ',
+};
+
+export const CLAIM_ISSUE_LABELS: Record<string, string> = {
+  NO_POWER: 'เปิดไม่ติด',
+  NO_SOUND: 'ไม่มีเสียง',
+  ABNORMAL_SOUND: 'เสียงผิดปกติ',
+  MIC_NOT_WORKING: 'ไมโครโฟนไม่ทำงาน',
+  BLUETOOTH_FAIL: 'Bluetooth เชื่อมต่อไม่ได้',
+  NOT_CHARGING: 'ชาร์จไม่เข้า',
+  BUTTON_ISSUE: 'ปุ่มควบคุมมีปัญหา',
+  OTHER: 'อื่น ๆ',
+};
+
+export const CLAIM_RESOLUTION_LABELS: Record<string, string> = {
+  REPAIR: 'ซ่อม',
+  REPLACEMENT: 'เปลี่ยนสินค้าใหม่',
+  REFUND: 'คืนเงิน',
+};
+
+export type ProductUnitLookup = {
+  unit_id: number;
+  serial_no: string;
+  order_id: number;
+  order_detail_id: number;
+  product_id: number;
+  product_name: string;
+  product_model: string | null;
+  purchased_at: string;
+  warranty_expires_at: string | null;
+  in_warranty: boolean;
+  previous_claims: { claim_no: string; status: string; created_at: string }[];
+};
+
+export type Claim = {
+  claim_id: number;
+  claim_no: string;
+  order_id: number;
+  order_detail_id: number;
+  unit_id: number;
+  product_id: number;
+  customer_user_id: number;
+  customer_name: string;
+  customer_phone: string;
+  product_name_snapshot: string;
+  product_model: string | null;
+  serial_no_snapshot: string;
+  purchased_at: string;
+  claim_component: string;
+  issue_type: string;
+  issue_detail: string;
+  status: string;
+  resolution_type: string | null;
+  staff_note: string | null;
+  rejected_reason: string | null;
+  linked_refund_id: number | null;
+  handled_by: number | null;
+  handled_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClaimAttachment = { attachment_id: number; kind: 'EVIDENCE' | 'INSPECTION_RESULT'; created_at: string };
+export type ClaimHistoryEntry = { status: string; note: string | null; created_at: string; changed_by_name: string | null };
+export type ClaimDetail = Claim & { attachments: ClaimAttachment[]; history: ClaimHistoryEntry[] };
+
+export type ClaimListFilters = {
+  q?: string; // matches claim_no OR serial_no — the tracking screen's single search box
+  claim_no?: string;
+  serial_no?: string;
+  product_name?: string;
+  customer_name?: string;
+  status?: string;
+};
+
+function claimQuery(filters: ClaimListFilters = {}) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) query.set(key, value);
+  }
+  const qs = query.toString();
+  return qs ? `?${qs}` : '';
+}
+
+export const productUnitsApi = {
+  lookup: (serial: string) => request<ProductUnitLookup>(`/api/product-units/${encodeURIComponent(serial)}`),
+};
+
+export const claimsApi = {
+  submit: (data: {
+    order_id: number;
+    serial_no: string;
+    customer_name: string;
+    customer_phone: string;
+    claim_component: string;
+    issue_type: string;
+    issue_detail: string;
+    evidence: File[];
+  }) => {
+    const form = new FormData();
+    form.append('order_id', String(data.order_id));
+    form.append('serial_no', data.serial_no);
+    form.append('customer_name', data.customer_name);
+    form.append('customer_phone', data.customer_phone);
+    form.append('claim_component', data.claim_component);
+    form.append('issue_type', data.issue_type);
+    form.append('issue_detail', data.issue_detail);
+    data.evidence.forEach((file) => form.append('evidence', file, file.name));
+    return request<{ claim_id: number; claim_no: string; status: string }>('/api/claims', { method: 'POST', body: form });
+  },
+  list: (filters?: ClaimListFilters) => request<Claim[]>(`/api/claims${claimQuery(filters)}`),
+  get: (id: number) => request<ClaimDetail>(`/api/claims/${id}`),
+  updateStatus: (
+    id: number,
+    data: { status: string; note?: string; rejected_reason?: string; resolution_type?: string; refund_amount?: string }
+  ) =>
+    request<{ success: boolean; status: string; linked_refund_id?: number | null }>(`/api/claims/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  uploadInspectionPhotos: (id: number, photos: File[]) => {
+    const form = new FormData();
+    photos.forEach((file) => form.append('photos', file, file.name));
+    return request<{ success: boolean; added: number }>(`/api/claims/${id}/attachments`, { method: 'POST', body: form });
+  },
+  attachmentPath: (claimId: number, attachmentId: number) => `/api/claims/${claimId}/attachments/${attachmentId}`,
+  pdfPath: (id: number) => `/api/claims/${id}/pdf`,
 };
 
 function expenseForm(data: ExpenseInput) {

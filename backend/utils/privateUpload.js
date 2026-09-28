@@ -21,10 +21,18 @@ const IMAGE_TYPES = {
   'image/webp': '.webp',
 };
 const IMAGE_OR_PDF_TYPES = { ...IMAGE_TYPES, 'application/pdf': '.pdf' };
+// Claim evidence can be a short video of the fault (e.g. Bluetooth not
+// pairing) — the spec explicitly asks for "รูปภาพหรือวิดีโอหลักฐาน".
+const VIDEO_TYPES = {
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/quicktime': '.mov',
+};
+const IMAGE_OR_VIDEO_TYPES = { ...IMAGE_TYPES, ...VIDEO_TYPES };
 
-// folder: 'slips' | 'refunds' | 'expenses'
-function createPrivateUpload(folder, { allowPdf = false } = {}) {
-  const allowed = allowPdf ? IMAGE_OR_PDF_TYPES : IMAGE_TYPES;
+// folder: 'slips' | 'refunds' | 'expenses' | 'claims'
+function createPrivateUpload(folder, { allowPdf = false, allowVideo = false, maxSizeMb = 5 } = {}) {
+  const allowed = allowVideo ? IMAGE_OR_VIDEO_TYPES : allowPdf ? IMAGE_OR_PDF_TYPES : IMAGE_TYPES;
   const dir = path.join(PRIVATE_ROOT, folder);
   fs.mkdirSync(dir, { recursive: true });
 
@@ -36,10 +44,15 @@ function createPrivateUpload(folder, { allowPdf = false } = {}) {
       filename: (req, file, cb) =>
         cb(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${allowed[file.mimetype]}`),
     }),
-    limits: { fileSize: 5 * 1024 * 1024 },
+    limits: { fileSize: maxSizeMb * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
       if (!allowed[file.mimetype]) {
-        return cb(new Error(allowPdf ? 'รองรับเฉพาะไฟล์ PNG, JPEG, WEBP หรือ PDF' : 'รองรับเฉพาะไฟล์รูป PNG, JPEG หรือ WEBP'));
+        const message = allowVideo
+          ? 'รองรับเฉพาะไฟล์รูป PNG, JPEG, WEBP หรือวิดีโอ MP4, WEBM, MOV'
+          : allowPdf
+            ? 'รองรับเฉพาะไฟล์ PNG, JPEG, WEBP หรือ PDF'
+            : 'รองรับเฉพาะไฟล์รูป PNG, JPEG หรือ WEBP';
+        return cb(new Error(message));
       }
       cb(null, true);
     },
@@ -61,6 +74,27 @@ function runUpload(upload, fieldName, req, res) {
   });
 }
 
+// Wraps multer's callback API for multiple files under one field (claim
+// evidence, inspection-result photos) — same clean-400-on-bad-file behaviour
+// as runUpload above, just returning req.files instead of a single req.file.
+function runUploadMultiple(upload, fieldName, maxCount, req, res) {
+  return new Promise((resolve, reject) => {
+    upload.array(fieldName, maxCount)(req, res, (err) => {
+      if (!err) return resolve(req.files || []);
+      const message =
+        err.code === 'LIMIT_FILE_SIZE'
+          ? 'ไฟล์ต้องมีขนาดไม่เกินที่กำหนด'
+          : err.code === 'LIMIT_UNEXPECTED_FILE'
+            ? `แนบไฟล์ได้ไม่เกิน ${maxCount} ไฟล์`
+            : err.message || 'อัปโหลดไฟล์ไม่สำเร็จ';
+      const httpErr = new Error(message);
+      httpErr.status = 400;
+      httpErr.publicMessage = message;
+      reject(httpErr);
+    });
+  });
+}
+
 function relativePathFor(folder, file) {
   return `${folder}/${file.filename}`;
 }
@@ -73,12 +107,23 @@ function removePrivateFile(relativePath) {
   if (full) fs.promises.unlink(full).catch(() => {});
 }
 
+function removePrivateFiles(relativePaths) {
+  (relativePaths || []).forEach(removePrivateFile);
+}
+
 function resolveSafe(relativePath) {
   const full = path.resolve(PRIVATE_ROOT, relativePath);
   // Refuse anything that would escape private_uploads/ (defence in depth —
   // paths in the DB are always ones we generated).
   if (!full.startsWith(PRIVATE_ROOT + path.sep)) return null;
   return full;
+}
+
+// Exposes the same safe path resolution sendPrivateFile() uses, for callers
+// that need the real filesystem path directly (e.g. embedding an evidence
+// image into a PDF with pdfkit) rather than streaming it as the response.
+function absolutePathFor(relativePath) {
+  return relativePath ? resolveSafe(relativePath) : null;
 }
 
 function sendPrivateFile(res, relativePath) {
@@ -90,4 +135,13 @@ function sendPrivateFile(res, relativePath) {
   return res.sendFile(full);
 }
 
-module.exports = { createPrivateUpload, runUpload, relativePathFor, removePrivateFile, sendPrivateFile };
+module.exports = {
+  createPrivateUpload,
+  runUpload,
+  runUploadMultiple,
+  relativePathFor,
+  removePrivateFile,
+  removePrivateFiles,
+  sendPrivateFile,
+  absolutePathFor,
+};

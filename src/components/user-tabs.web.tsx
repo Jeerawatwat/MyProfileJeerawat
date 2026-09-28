@@ -35,6 +35,9 @@ export default function UserTabs() {
           <TabTrigger name="orders" href="/orders" asChild>
             <TabButton icon="🧾">คำสั่งซื้อ</TabButton>
           </TabTrigger>
+          <TabTrigger name="claim-tracking" href="/claim-tracking" asChild>
+            <TabButton icon="🛠️">เคลม</TabButton>
+          </TabTrigger>
           <TabTrigger name="profile" href="/profile" asChild>
             <TabButton icon="👤">บัญชีของฉัน</TabButton>
           </TabTrigger>
