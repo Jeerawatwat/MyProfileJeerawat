@@ -1359,3 +1359,57 @@ export function getStockStatus(stock: number): { label: string; tone: 'success' 
 export function formatBaht(value: number): string {
   return `฿${Number(value).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
+
+// ===== AI Chatbot API =====
+export type ChatRole = 'user' | 'model';
+
+export type ChatMessage = {
+  id?: string;
+  role: ChatRole;
+  text: string;
+  timestamp?: number;
+};
+
+export type ChatContext = {
+  shopName: string;
+  username: string;
+  userId: number;
+  products: Array<{
+    id: number;
+    name: string;
+    price: number;
+    original_price: number | null;
+    stock: number;
+    category: string;
+    model: string;
+    warranty_months: number;
+  }>;
+  categories: string[];
+  orders: Array<{
+    order_id: number;
+    date: string;
+    total: number;
+    status: string;
+    payment_status: string;
+    items: Array<{ name: string; quantity: number; price: number }>;
+  }>;
+  claims: Array<{
+    claim_number: string;
+    product: string;
+    serial: string;
+    status: string;
+    symptom: string;
+    date: string;
+  }>;
+  apiKey: string | null;
+  model: string;
+};
+
+export const chatbotApi = {
+  sendMessage: (message: string, history: Array<{ role: ChatRole; text: string }>) =>
+    request<{ reply: string }>('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, history }),
+    }),
+  getContext: () => request<ChatContext>('/api/chat/context'),
+};
