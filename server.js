@@ -26,6 +26,7 @@ const deliveryRoutes = require('./backend/routes/delivery.routes');
 const stockRoutes = require('./backend/routes/stock.routes');
 const productUnitsRoutes = require('./backend/routes/product-units.routes');
 const claimsRoutes = require('./backend/routes/claims.routes');
+const chatbotRoutes = require('./backend/routes/chatbot.routes');
 
 const app = express();
 const port = process.env.PORT || 3079;
@@ -69,6 +70,7 @@ app.use('/api/stock', stockRoutes);
 // private-file model as slips/refund evidence above (private_uploads/claims/).
 app.use('/api/product-units', productUnitsRoutes);
 app.use('/api/claims', claimsRoutes);
+app.use('/api/chat', chatbotRoutes);
 
 // Legacy endpoint kept for backwards compatibility with the original server.js.
 // It now requires auth (it used to be public), because it returns the same real
