@@ -21,6 +21,7 @@ import { ToastProvider, useToast } from '@/context/toast-context';
 
 import DeliveryTabs from '@/components/delivery-tabs';
 import StockTabs from '@/components/stock-tabs';
+import { ChatbotPopup } from '@/components/chatbot-popup';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -83,6 +84,7 @@ function AuthGate() {
       <ThemedView style={{ flex: 1 }}>
         <BrandHeader />
         <ThemedView style={{ flex: 1 }}>{tabs}</ThemedView>
+        {(role === 'user' || role === 'admin') && <ChatbotPopup />}
       </ThemedView>
     </CartProvider>
   );
