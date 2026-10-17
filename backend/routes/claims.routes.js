@@ -82,6 +82,7 @@ router.post('/', requireRole('user'), async (req, res, next) => {
     const issueDetail = typeof req.body.issue_detail === 'string' ? req.body.issue_detail.trim() : '';
     if (!issueDetail) throw httpError(400, 'กรุณาระบุรายละเอียดปัญหา');
     if (issueDetail.length > 2000) throw httpError(400, 'รายละเอียดปัญหายาวเกินไป');
+    const shippingAddress = typeof req.body.shipping_address === 'string' ? req.body.shipping_address.trim() : '';
 
     const claimId = await withTransaction(async (conn) => {
       const [units] = await conn.query('SELECT * FROM Product_Units WHERE serial_no = ? FOR UPDATE', [serialNo]);
@@ -112,10 +113,10 @@ router.post('/', requireRole('user'), async (req, res, next) => {
 
       const [insert] = await conn.query(
         `INSERT INTO Claims (
-           order_id, order_detail_id, unit_id, product_id, customer_user_id, customer_name, customer_phone,
+           order_id, order_detail_id, unit_id, product_id, customer_user_id, customer_name, customer_phone, shipping_address,
            product_name_snapshot, product_model, serial_no_snapshot, purchased_at,
            claim_component, issue_type, issue_detail, status
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderId,
           unit.order_detail_id,
@@ -124,6 +125,7 @@ router.post('/', requireRole('user'), async (req, res, next) => {
           req.user.id,
           customerName,
           customerPhone,
+          shippingAddress || null,
           productInfo.name,
           productInfo.model,
           serialNo,
@@ -168,7 +170,7 @@ router.post('/', requireRole('user'), async (req, res, next) => {
 
 const LIST_SELECT = `
   SELECT c.claim_id, c.claim_no, c.order_id, c.order_detail_id, c.unit_id, c.product_id, c.customer_user_id,
-         c.customer_name, c.customer_phone, c.product_name_snapshot, c.product_model, c.serial_no_snapshot,
+         c.customer_name, c.customer_phone, c.shipping_address, c.product_name_snapshot, c.product_model, c.serial_no_snapshot,
          c.purchased_at, c.claim_component, c.issue_type, c.issue_detail, c.status, c.resolution_type,
          c.staff_note, c.rejected_reason, c.linked_refund_id, c.handled_by, c.created_at, c.updated_at,
          h.username AS handled_by_name
@@ -385,7 +387,14 @@ router.get('/:id/pdf', async (req, res, next) => {
       [claim.claim_id]
     );
     const firstImage = attachments.find((a) => /\.(png|jpe?g|webp)$/i.test(a.file_path));
+    if (attachments.length > 0) {
+      console.log('[PDF route] attachments:', attachments.map((a) => a.file_path));
+      console.log('[PDF route] firstImage:', firstImage?.file_path ?? 'none (all videos?)');
+    }
     const evidenceImagePath = firstImage ? absolutePathFor(firstImage.file_path) : null;
+    if (firstImage) {
+      console.log('[PDF route] absolutePathFor result:', evidenceImagePath);
+    }
     streamClaimPdf(res, { claim, evidenceImagePath, attachmentCount: attachments.length });
   } catch (err) {
     next(err);

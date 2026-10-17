@@ -384,6 +384,9 @@ function AdminClaimsContent() {
                       <View style={[s.divided]}>
                         <ThemedText type="small">Serial: {detail.serial_no_snapshot}</ThemedText>
                         <ThemedText type="small">โทร: {detail.customer_phone}</ThemedText>
+                        {detail.shipping_address ? (
+                          <ThemedText type="small">ที่อยู่จัดส่งคืน: {detail.shipping_address}</ThemedText>
+                        ) : null}
                         <ThemedText type="small">
                           อุปกรณ์: {CLAIM_COMPONENT_LABELS[detail.claim_component] ?? detail.claim_component} · อาการ:{' '}
                           {CLAIM_ISSUE_LABELS[detail.issue_type] ?? detail.issue_type}

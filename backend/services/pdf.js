@@ -334,6 +334,9 @@ function streamClaimPdf(res, { claim, evidenceImagePath, attachmentCount }) {
   let yR = claimField(doc, left + halfW + 24, y, 110, halfW, 'เลขที่คำสั่งซื้อ', `#${claim.order_id}`);
   yR = claimField(doc, left + halfW + 24, yR, 110, halfW, 'วันที่แจ้งเคลม', formatBangkok(claim.created_at));
   y = Math.max(yL, yR, s1Top);
+  if (claim.shipping_address) {
+    y = claimField(doc, left, y, 110, width, 'ที่อยู่จัดส่งคืน', claim.shipping_address);
+  }
 
   // Section 2 — product
   ensureSpace(90);
@@ -377,18 +380,25 @@ function streamClaimPdf(res, { claim, evidenceImagePath, attachmentCount }) {
   doc.fillColor(BRAND.text);
   y = doc.y + 8;
 
-  if (evidenceImagePath && fs.existsSync(evidenceImagePath)) {
-    ensureSpace(190);
-    doc.font('bold').fontSize(10).text('รูปภาพหลักฐาน', left, y, { width });
-    y = doc.y + 6;
-    try {
-      const imgW = width * 0.45;
-      doc.roundedRect(left, y, imgW, 170, 6).fillAndStroke(BRAND.page, BRAND.border);
-      doc.image(evidenceImagePath, left + 4, y + 4, { fit: [imgW - 8, 162] });
-      y += 178;
-    } catch {
-      // Corrupt/unreadable image — skip it rather than fail the whole PDF.
+  if (evidenceImagePath) {
+    const imageExists = fs.existsSync(evidenceImagePath);
+    if (!imageExists) {
+      console.error('[PDF] Evidence image path does not exist on disk:', evidenceImagePath);
+    } else {
+      ensureSpace(190);
+      doc.font('bold').fontSize(10).text('รูปภาพหลักฐาน', left, y, { width });
+      y = doc.y + 6;
+      try {
+        const imgW = width * 0.45;
+        doc.roundedRect(left, y, imgW, 170, 6).fillAndStroke(BRAND.page, BRAND.border);
+        doc.image(evidenceImagePath, left + 4, y + 4, { fit: [imgW - 8, 162] });
+        y += 178;
+      } catch (imgErr) {
+        console.error('[PDF] Failed to embed evidence image:', evidenceImagePath, imgErr);
+      }
     }
+  } else if (hasAttachments) {
+    console.error('[PDF] hasAttachments=true but evidenceImagePath resolved to null — check absolutePathFor / resolveSafe logic');
   }
 
   // Section 6 — how to send the item back (a static, printable checklist —
@@ -416,7 +426,14 @@ function streamClaimPdf(res, { claim, evidenceImagePath, attachmentCount }) {
       { width }
     );
   doc.fillColor(BRAND.text);
-  y = doc.y + 10;
+  y = doc.y + 6;
+  if (claim.shipping_address) {
+    doc.font('bold').fontSize(9).fillColor(BRAND.text).text('ที่อยู่จัดส่งคืนของลูกค้า:', left, y, { width: 130 });
+    doc.font('regular').fillColor(BRAND.text).text(claim.shipping_address, left + 130, y, { width: width - 130 });
+    y = doc.y + 10;
+  } else {
+    y += 4;
+  }
 
   // Section 7 — staff-only section: resolution checkboxes + any note left
   // when the claim was approved/rejected, and who last worked on it.

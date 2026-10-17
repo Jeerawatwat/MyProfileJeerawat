@@ -851,6 +851,7 @@ export type Claim = {
   customer_user_id: number;
   customer_name: string;
   customer_phone: string;
+  shipping_address: string | null;
   product_name_snapshot: string;
   product_model: string | null;
   serial_no_snapshot: string;
@@ -901,6 +902,7 @@ export const claimsApi = {
     serial_no: string;
     customer_name: string;
     customer_phone: string;
+    shipping_address?: string;
     claim_component: string;
     issue_type: string;
     issue_detail: string;
@@ -911,6 +913,7 @@ export const claimsApi = {
     form.append('serial_no', data.serial_no);
     form.append('customer_name', data.customer_name);
     form.append('customer_phone', data.customer_phone);
+    if (data.shipping_address) form.append('shipping_address', data.shipping_address);
     form.append('claim_component', data.claim_component);
     form.append('issue_type', data.issue_type);
     form.append('issue_detail', data.issue_detail);

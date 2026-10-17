@@ -146,6 +146,7 @@ export function ClaimRequestSheet({
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [shippingAddress, setShippingAddress] = useState('');
   const [component, setComponent] = useState('');
   const [issueType, setIssueType] = useState('');
   const [issueDetail, setIssueDetail] = useState('');
@@ -183,6 +184,7 @@ export function ClaimRequestSheet({
     setLookupError(null);
     setCustomerName(user?.username ?? '');
     setCustomerPhone('');
+    setShippingAddress('');
     setComponent('');
     setIssueType('');
     setIssueDetail('');
@@ -219,6 +221,7 @@ export function ClaimRequestSheet({
         serial_no: lookup.serial_no,
         customer_name: customerName.trim(),
         customer_phone: customerPhone.trim(),
+        shipping_address: shippingAddress.trim() || undefined,
         claim_component: component,
         issue_type: issueType,
         issue_detail: issueDetail.trim(),
@@ -356,6 +359,22 @@ export function ClaimRequestSheet({
                           style={[styles.input, { borderColor: theme.border, color: theme.text }]}
                         />
                       </View>
+                    </View>
+
+                    <View style={styles.field}>
+                      <ThemedText type="smallBold">ที่อยู่สำหรับจัดส่งสินค้าคืน</ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        กรอกที่อยู่ที่ต้องการให้ส่งสินค้าคืนหลังซ่อม/เปลี่ยน (ถ้ามี)
+                      </ThemedText>
+                      <TextInput
+                        value={shippingAddress}
+                        onChangeText={setShippingAddress}
+                        placeholder={`เช่น 123/4 ถนน... แขวง... เขต... กรุงเทพฯ 10100`}
+                        placeholderTextColor={theme.textSecondary}
+                        multiline
+                        numberOfLines={3}
+                        style={[styles.input, styles.textArea, { borderColor: theme.border, color: theme.text, minHeight: 72 }]}
+                      />
                     </View>
 
                     <View style={styles.field}>
